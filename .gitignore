@@ -1,0 +1,13 @@
+node_modules/
+dist/
+data/
+web-client/dist/
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

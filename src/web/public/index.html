@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>NOAURA BOT — Private Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181c'/%3E%3Ctext x='16' y='22' font-size='16' font-family='monospace' font-weight='700' text-anchor='middle' fill='%23ff7a18'%3EN%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <!-- Login -->
+    <section id="login" class="login" hidden>
+      <form id="login-form" class="login-card" autocomplete="off">
+        <div class="brand-mark">N</div>
+        <h1>NOAURA BOT</h1>
+        <p class="muted">Private console. Only you can sign in.</p>
+        <label for="login-username">Username</label>
+        <input id="login-username" name="username" type="text" autocomplete="username" required />
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit" class="btn btn-primary">Sign in</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <!-- App shell -->
+    <div id="app" class="shell" hidden>
+      <aside class="side">
+        <div class="side-brand">
+          <span class="brand-mark small">N</span>
+          <span>NOAURA</span>
+        </div>
+        <nav id="nav">
+          <a href="#/overview" data-view="overview">Dashboard</a>
+          <a href="#/whatsapp" data-view="whatsapp">WhatsApp</a>
+          <a href="#/commands" data-view="commands">Commands</a>
+          <a href="#/autoreplies" data-view="autoreplies">Auto Reply</a>
+          <a href="#/groups" data-view="groups">Groups</a>
+          <a href="#/media" data-view="media">Media</a>
+          <a href="#/ai" data-view="ai">AI</a>
+          <a href="#/scheduler" data-view="scheduler">Scheduler</a>
+          <a href="#/logs" data-view="logs">Logs</a>
+          <a href="#/settings" data-view="settings">Settings</a>
+        </nav>
+        <div class="side-foot">
+          <button id="theme-toggle" class="btn btn-ghost" type="button">Theme: Dark</button>
+          <button id="logout" class="btn btn-ghost" type="button">Sign out</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="view-title">Dashboard</h2>
+            <p id="view-note" class="muted">Live data from this bot process.</p>
+          </div>
+          <div id="conn-pill" class="pill pill-off">Checking…</div>
+        </header>
+        <div id="view"></div>
+      </main>
+    </div>
+
+    <template id="tpl-overview">
+      <div class="grid grid-4">
+        <div class="card stat">
+          <span class="stat-label">WhatsApp</span>
+          <strong id="s-whatsapp">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Bot</span>
+          <strong id="s-bot">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Users</span>
+          <strong id="s-users">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Groups</span>
+          <strong id="s-groups">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Messages stored</span>
+          <strong id="s-messages">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Commands run</span>
+          <strong id="s-commands">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Media jobs</span>
+          <strong id="s-media">—</strong>
+        </div>
+        <div class="card stat">
+          <span class="stat-label">Uptime</span>
+          <strong id="s-uptime">—</strong>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Session</h3>
+        <dl id="session-detail" class="detail"></dl>
+      </div>
+      <div class="card">
+        <h3>Latest log lines</h3>
+        <div id="overview-logs" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-whatsapp">
+      <div class="card">
+        <h3>Connect with a pairing code</h3>
+        <p class="muted">
+          No QR needed. Enter the bot's own number, then type the code inside WhatsApp under
+          Linked devices → Link with phone number.
+        </p>
+        <div class="row">
+          <input id="pair-number" type="tel" placeholder="+94 771234567" />
+          <button id="pair-btn" class="btn btn-primary" type="button">Generate Pairing Code</button>
+        </div>
+        <div id="pair-out" hidden>
+          <div id="pair-code" class="code">------</div>
+          <p id="pair-expires" class="muted"></p>
+          <div class="two-col">
+            <div>
+              <h4>English</h4>
+              <ol id="steps-en"></ol>
+            </div>
+            <div>
+              <h4>සිංහල</h4>
+              <ol id="steps-si"></ol>
+            </div>
+          </div>
+        </div>
+        <p id="pair-error" class="error" hidden></p>
+      </div>
+      <div class="card">
+        <h3>Controls</h3>
+        <dl id="wa-detail" class="detail"></dl>
+        <div class="row wrap">
+          <button id="wa-reconnect" class="btn" type="button">Reconnect session</button>
+          <button id="wa-disconnect" class="btn" type="button">Disconnect</button>
+          <button id="wa-logout" class="btn btn-danger" type="button">Unlink device (logout)</button>
+        </div>
+      </div>
+    </template>
+
+    <template id="tpl-commands">
+      <div class="card">
+        <h3>Create a custom command</h3>
+        <div class="row wrap">
+          <input id="cmd-name" placeholder="rules" />
+          <input id="cmd-response" placeholder="Please follow our group rules." />
+          <button id="cmd-add" class="btn btn-primary" type="button">Add</button>
+        </div>
+        <p id="cmd-error" class="error" hidden></p>
+      </div>
+      <div class="card">
+        <h3>Custom commands</h3>
+        <div id="custom-commands" class="table-wrap"></div>
+      </div>
+      <div class="card">
+        <h3>Built-in commands</h3>
+        <div id="builtin-commands" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-autoreplies">
+      <div class="card">
+        <h3>Add an auto reply</h3>
+        <div class="row wrap">
+          <input id="ar-triggers" placeholder="hello, hi, hey" />
+          <input id="ar-response" placeholder="👋 Hello!" />
+          <select id="ar-match">
+            <option value="exact">exact</option>
+            <option value="contains">contains</option>
+          </select>
+          <button id="ar-add" class="btn btn-primary" type="button">Add</button>
+        </div>
+        <p id="ar-error" class="error" hidden></p>
+      </div>
+      <div class="card">
+        <h3>Replies</h3>
+        <div id="autoreply-list" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-groups">
+      <div class="card">
+        <h3>Groups seen by the bot</h3>
+        <div id="group-list" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-media">
+      <div class="card">
+        <h3>Download tools</h3>
+        <div id="media-tools" class="grid grid-3"></div>
+        <p class="muted">
+          Music and video use yt-dlp, animated stickers use ffmpeg. Install them and restart the bot;
+          nothing here is simulated.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Recent media jobs</h3>
+        <div id="media-history" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-ai">
+      <div class="card">
+        <h3>AI status</h3>
+        <dl id="ai-detail" class="detail"></dl>
+        <p class="muted">
+          Without an API key the bot replies that AI is disabled instead of inventing an answer.
+          Set AI_PROVIDER, AI_API_KEY and AI_MODEL in .env.
+        </p>
+        <label class="check">
+          <input id="ai-enabled" type="checkbox" />
+          <span>AI enabled (.ai command)</span>
+        </label>
+        <button id="ai-save" class="btn btn-primary" type="button">Save</button>
+      </div>
+    </template>
+
+    <template id="tpl-scheduler">
+      <div class="card">
+        <h3>Scheduled tasks</h3>
+        <p class="muted">
+          Created with <code>.schedule</code> on WhatsApp. Times use the bot's timezone.
+        </p>
+        <div id="schedule-list" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-logs">
+      <div class="card">
+        <h3>Bot log</h3>
+        <p class="muted">Secrets, message content and API keys are never written here.</p>
+        <div id="log-list" class="table-wrap"></div>
+      </div>
+    </template>
+
+    <template id="tpl-settings">
+      <div class="card">
+        <h3>Bot settings</h3>
+        <div id="settings-form" class="form-grid"></div>
+        <button id="settings-save" class="btn btn-primary" type="button">Save settings</button>
+        <p id="settings-msg" class="muted"></p>
+      </div>
+      <div class="card">
+        <h3>Integrations</h3>
+        <dl id="integration-detail" class="detail"></dl>
+      </div>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

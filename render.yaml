@@ -1,0 +1,52 @@
+# Render blueprint — deploys NOAURA BOT as a free Docker web service.
+# Secrets marked `sync: false` are entered once in the Render dashboard
+# (Environment tab) instead of being committed to this file.
+services:
+  - type: web
+    name: noaura-bot
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Render routes traffic only to a listener on 0.0.0.0:$PORT.
+      - key: DASHBOARD_HOST
+        value: 0.0.0.0
+      # Remote Turso database — session and data survive redeploys.
+      - key: DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      # Must be set in the cloud: a regenerated key would make every stored
+      # session unreadable after the next deploy.
+      - key: SESSION_ENCRYPTION_KEY
+        sync: false
+      # Bot identity — same values as the local .env.
+      - key: OWNER_NUMBER
+        sync: false
+      - key: OWNER_JID
+        sync: false
+      - key: BOT_LANGUAGE
+        value: en
+      - key: TIMEZONE
+        value: Asia/Colombo
+      # AI chat.
+      - key: AI_PROVIDER
+        value: gemini
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gemini-3.8-flash
+      # Dashboard login (password is auto-generated and printed in the log if
+      # left empty on first boot).
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: COOKIE_SECRET
+        sync: false
+      # Media downloads.
+      - key: MEDIA_ENABLED
+        value: 'true'
+      - key: MEDIA_MAX_MB
+        value: '64'
+      - key: MEDIA_TIMEOUT_MS
+        value: '300000'

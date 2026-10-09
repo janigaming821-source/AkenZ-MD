@@ -1,0 +1,53 @@
+{
+  "name": "noaura-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "NOAURA BOT - single-owner personal WhatsApp bot (Baileys + phone pairing)",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "typecheck": "tsc --noEmit",
+    "pair": "tsx src/scripts/pair.ts",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@prisma/adapter-libsql": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "@whiskeysockets/baileys": "^6.7.24",
+    "axios": "^1.20.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "luxon": "^3.7.2",
+    "pino": "^9.14.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.33.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^4.17.25",
+    "@types/express-session": "^1.19.0",
+    "@types/luxon": "^3.7.6",
+    "@types/node": "^24.19.1",
+    "@types/qrcode": "^1.5.6",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

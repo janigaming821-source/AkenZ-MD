@@ -1,0 +1,205 @@
+// NOAURA BOT — database schema (SQLite, single-owner personal deployment)
+// SQLite has no enum/json column types in Prisma, so enum-like fields are
+// validated where they are written and JSON-ish fields are stored as strings.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Single row (id = 1). Global bot settings.
+model BotConfig {
+  id                Int      @id @default(1)
+  name              String   @default("NOAURA BOT")
+  version           String   @default("1.0.0")
+  prefix            String   @default(".")
+  language          String   @default("en")
+  ownerNumber       String   @default("")
+  aiEnabled         Boolean  @default(false)
+  autoReplyEnabled  Boolean  @default(true)
+  welcomeEnabled    Boolean  @default(true)
+  goodbyeEnabled    Boolean  @default(true)
+  mediaEnabled      Boolean  @default(true)
+  groupToolsEnabled Boolean  @default(true)
+  privateChatsOnly  Boolean  @default(false)
+  statusText        String   @default("NOAURA BOT")
+  maxWarnings       Int      @default(3)
+  warningAction     String   @default("mute")
+  dashboardHash     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  jid          String   @unique
+  waId         String?
+  name         String?
+  firstSeen    DateTime @default(now())
+  lastSeen     DateTime @default(now())
+  messageCount Int      @default(0)
+  /// null means "follow the bot's default language"; only .language sets it.
+  language     String?
+  blocked      Boolean  @default(false)
+
+  @@index([lastSeen])
+}
+
+model Group {
+  id          Int      @id @default(autoincrement())
+  jid         String   @unique
+  name        String?
+  memberCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  settings  GroupSettings?
+  warnings  Warning[]
+
+  @@index([jid])
+}
+
+model GroupSettings {
+  id             Int      @id @default(autoincrement())
+  groupJid       String   @unique
+  prefix         String?
+  welcome        Boolean  @default(true)
+  goodbye        Boolean  @default(true)
+  antiSpam       Boolean  @default(true)
+  antiLink       Boolean  @default(false)
+  antiDelete     Boolean  @default(false)
+  approvals      Boolean  @default(false)
+  muted          Boolean  @default(false)
+  rules          String   @default("")
+  tagallCooldown Int      @default(180)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  group Group? @relation(fields: [groupJid], references: [jid], onDelete: Cascade)
+}
+
+model Warning {
+  id         Int      @id @default(autoincrement())
+  groupJid   String
+  userJid    String
+  reason     String   @default("")
+  issuedBy   String
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  group Group @relation(fields: [groupJid], references: [jid], onDelete: Cascade)
+
+  @@index([groupJid, userJid])
+}
+
+model AutoReply {
+  id        Int      @id @default(autoincrement())
+  triggers  String
+  matchType String   @default("exact")
+  response  String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([enabled])
+}
+
+model CustomCommand {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  response  String
+  mediaUrl  String?
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+model MediaHistory {
+  id        Int      @id @default(autoincrement())
+  kind      String
+  query     String
+  provider  String?
+  requester String?
+  status    String
+  bytes     Int      @default(0)
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+model ScheduledTask {
+  id        Int      @id @default(autoincrement())
+  chatJid   String
+  message   String
+  kind      String   @default("message")
+  runAt     DateTime
+  status    String   @default("pending")
+  attempts  Int      @default(0)
+  lastError String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([status, runAt])
+}
+
+// Audit trail of privileged owner actions (who did what, never secrets).
+model OwnerAction {
+  id        Int      @id @default(autoincrement())
+  action    String
+  detail    String?
+  target    String?
+  actorJid  String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model BotLog {
+  id        Int      @id @default(autoincrement())
+  level     String
+  scope     String
+  message   String
+  meta      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+}
+
+/// Counters only — message text is never stored. chatJid is a plain string so a
+/// private chat that has no Group row can still be counted.
+model MessageStat {
+  id        Int      @id @default(autoincrement())
+  chatJid   String
+  isGroup   Boolean  @default(false)
+  command   String?
+  createdAt DateTime @default(now())
+
+  @@index([chatJid])
+  @@index([createdAt])
+  @@index([command])
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  userJid   String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userJid])
+}
+
+// WhatsApp session storage for cloud deploys: two rows ('creds' | 'keys'),
+// values are AES-256-GCM ciphertext produced by lib/crypto.ts. The local
+// deployment keeps using encrypted files; this table only matters when the
+// database is remote (libsql://) and the container disk is ephemeral.
+model SessionStore {
+  id        String   @id
+  payload   String
+  updatedAt DateTime @updatedAt
+}

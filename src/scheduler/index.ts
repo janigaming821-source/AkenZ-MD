@@ -1,0 +1,51 @@
+import { prisma } from '../db/client.js';
+import { logError, logInfo } from '../db/botLog.js';
+import { whatsapp } from '../whatsapp/client.js';
+
+const TICK_MS = 20_000;
+const MAX_ATTEMPTS = 3;
+
+let timer: NodeJS.Timeout | null = null;
+
+async function runDueTasks(): Promise<void> {
+  if (!whatsapp.isConnected) return;
+  const due = await prisma.scheduledTask.findMany({
+    where: { status: 'pending', runAt: { lte: new Date() } },
+    take: 20,
+    orderBy: { runAt: 'asc' },
+  });
+
+  for (const task of due) {
+    try {
+      await whatsapp.sendText(task.chatJid, `⏰ ${task.message}`);
+      await prisma.scheduledTask.update({ where: { id: task.id }, data: { status: 'done', attempts: { increment: 1 } } });
+      await logInfo('scheduler', 'Scheduled message delivered');
+    } catch (error) {
+      const attempts = task.attempts + 1;
+      await prisma.scheduledTask.update({
+        where: { id: task.id },
+        data: {
+          attempts,
+          status: attempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
+          // Back off instead of hammering a chat that is refusing messages.
+          runAt: new Date(Date.now() + attempts * 60_000),
+          lastError: error instanceof Error ? error.message : String(error),
+        },
+      });
+      await logError('scheduler', 'Scheduled message failed', { attempt: attempts });
+    }
+  }
+}
+
+export function startScheduler(): void {
+  if (timer) return;
+  timer = setInterval(() => {
+    void runDueTasks().catch((error) => logError('scheduler', 'Scheduler tick failed', { detail: String(error) }));
+  }, TICK_MS);
+  timer.unref();
+}
+
+export function stopScheduler(): void {
+  if (timer) clearInterval(timer);
+  timer = null;
+}
