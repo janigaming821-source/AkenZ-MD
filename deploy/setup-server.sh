@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== NOAURA BOT — Server Setup ==="
+echo "=== AkenZ MD — Server Setup ==="
 echo "This script sets up a fresh Ubuntu/Debian VM for the bot."
 echo ""
 
@@ -20,14 +20,14 @@ sudo apt-get update
 sudo apt-get install -y ffmpeg yt-dlp
 
 # Create app user
-if ! id -u noaura &>/dev/null; then
-  sudo useradd -r -m -s /bin/bash noaura
-  echo "Created 'noaura' user."
+if ! id -u akenz &>/dev/null; then
+  sudo useradd -r -m -s /bin/bash akenz
+  echo "Created 'akenz' user."
 fi
 
 # Create app directory
-sudo mkdir -p /opt/noaura
-sudo chown noaura:noaura /opt/noaura
+sudo mkdir -p /opt/akenz
+sudo chown akenz:akenz /opt/akenz
 
 # Install pm2 globally for process management
 if ! command -v pm2 &>/dev/null; then
@@ -39,12 +39,12 @@ echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
-echo "1. Copy the project files to /opt/noaura (scp, rsync, or git clone)"
-echo "2. cd /opt/noaura && npm ci --omit=dev && npx prisma generate"
-echo "3. Create /opt/noaura/.env with your config"
-echo "4. sudo chown -R noaura:noaura /opt/noaura"
-echo "5. sudo -u noaura pm2 start dist/index.js --name noaura"
-echo "6. sudo -u noaura pm2 save"
+echo "1. Copy the project files to /opt/akenz (scp, rsync, or git clone)"
+echo "2. cd /opt/akenz && npm ci --omit=dev && npx prisma generate"
+echo "3. Create /opt/akenz/.env with your config"
+echo "4. sudo chown -R akenz:akenz /opt/akenz"
+echo "5. sudo -u akenz pm2 start dist/index.js --name akenz"
+echo "6. sudo -u akenz pm2 save"
 echo "7. pm2 startup (follow the output to auto-start on boot)"
 echo ""
 echo "The dashboard will be on port 3000. Use a reverse proxy (nginx/caddy) for HTTPS."

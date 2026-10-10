@@ -1,4 +1,4 @@
-/** NOAURA BOT — private dashboard. Plain ES modules, no build step. */
+/** AkenZ MD — private dashboard. Plain ES modules, no build step. */
 
 const csrf = { token: null };
 
@@ -62,7 +62,7 @@ function table(headers, rows) {
 
 /* ── Theme ─────────────────────────────────────────────────────────────── */
 const THEMES = ['dark', 'light', 'system'];
-let themeIndex = Number(THEMES.includes(localStorage.getItem('noaura.theme')) ? THEMES.indexOf(localStorage.getItem('noaura.theme')) : 0);
+let themeIndex = Number(THEMES.includes(localStorage.getItem('akenz.theme')) ? THEMES.indexOf(localStorage.getItem('akenz.theme')) : 0);
 
 function applyTheme() {
   const mode = THEMES[themeIndex];
@@ -73,7 +73,7 @@ function applyTheme() {
 
 el('theme-toggle').addEventListener('click', () => {
   themeIndex = (themeIndex + 1) % THEMES.length;
-  localStorage.setItem('noaura.theme', THEMES[themeIndex]);
+  localStorage.setItem('akenz.theme', THEMES[themeIndex]);
   applyTheme();
 });
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {

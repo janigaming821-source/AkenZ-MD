@@ -25,7 +25,7 @@ function banner(lines: string[]): void {
   const pad = (s: string) => s + ' '.repeat(width - plainLength(s));
   console.log('');
   console.log(`${ORANGE}╭${'─'.repeat(width + 2)}╮${RESET}`);
-  console.log(`${ORANGE}│${RESET} ${pad('NOAURA BOT')} ${ORANGE}│${RESET}`);
+  console.log(`${ORANGE}│${RESET} ${pad('AkenZ MD')} ${ORANGE}│${RESET}`);
   console.log(`${ORANGE}├${'─'.repeat(width + 2)}┤${RESET}`);
   for (const line of lines) console.log(`${ORANGE}│${RESET} ${pad(line)} ${ORANGE}│${RESET}`);
   console.log(`${ORANGE}╰${'─'.repeat(width + 2)}╯${RESET}`);
@@ -123,7 +123,7 @@ let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`\n${signal} received — shutting down NOAURA BOT…`);
+  console.log(`\n${signal} received — shutting down AkenZ MD…`);
   stopScheduler();
   try {
     await whatsapp.disconnect();

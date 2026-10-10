@@ -1,9 +1,9 @@
-# Render blueprint — deploys NOAURA BOT as a free Docker web service.
+# Render blueprint — deploys AkenZ MD as a free Docker web service.
 # Secrets marked `sync: false` are entered once in the Render dashboard
 # (Environment tab) instead of being committed to this file.
 services:
   - type: web
-    name: noaura-bot
+    name: akenz-md
     runtime: docker
     plan: free
     healthCheckPath: /health

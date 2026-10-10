@@ -675,7 +675,7 @@ export class WhatsAppClient {
       connection.patch({ status: 'logged_out', selfJid: null });
       return;
     }
-    await this.sock.logout('NOAURA BOT: logout requested from the private dashboard');
+    await this.sock.logout('AkenZ MD: logout requested from the private dashboard');
     this.auth?.destroy();
     this.auth = null;
     this.sock = null;

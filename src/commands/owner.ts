@@ -414,7 +414,7 @@ const backup: Command = {
       return;
     }
     const stamp = new Date().toISOString().replaceAll(':', '-').slice(0, 19);
-    const target = join(config.paths.dataDir, 'backups', `noaura-${stamp}.db`);
+    const target = join(config.paths.dataDir, 'backups', `akenz-${stamp}.db`);
     await mkdir(join(config.paths.dataDir, 'backups'), { recursive: true });
     // Flush WAL pages first so the copied file is a consistent snapshot.
     // This PRAGMA returns a row, so it must go through queryRaw, not executeRaw.

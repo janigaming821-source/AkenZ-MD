@@ -1,4 +1,4 @@
-# NOAURA BOT
+# AkenZ MD
 
 A single-owner personal WhatsApp bot that runs on **your own WhatsApp account**.
 It connects with a **pairing code typed into WhatsApp** — no QR code, no
@@ -95,7 +95,7 @@ Full reference:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `BOT_NAME` | `NOAURA BOT` | Shown in `.menu` and the dashboard |
+| `BOT_NAME` | `AkenZ MD` | Shown in `.menu` and the dashboard |
 | `OWNER_NUMBER` | *(empty)* | Required for owner features |
 | `OWNER_JID` | *(empty)* | Your WhatsApp address from `.profile`; unlocks owner commands in private chats |
 | `BOT_PREFIX` | `.` | Change later with `.setprefix` |

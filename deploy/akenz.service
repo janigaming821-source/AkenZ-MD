@@ -1,12 +1,12 @@
 [Unit]
-Description=NOAURA BOT WhatsApp Bot
+Description=AkenZ MD WhatsApp Bot
 After=network.target
 
 [Service]
 Type=simple
-User=noaura
-WorkingDirectory=/opt/noaura
-ExecStart=/usr/bin/node /opt/noaura/dist/index.js
+User=akenz
+WorkingDirectory=/opt/akenz
+ExecStart=/usr/bin/node /opt/akenz/dist/index.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production

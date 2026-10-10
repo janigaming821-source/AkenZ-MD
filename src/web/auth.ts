@@ -66,7 +66,7 @@ const safeEqual = (a: string, b: string): boolean => {
 };
 
 export const sessionMiddleware = session({
-  name: 'noaura.sid',
+  name: 'akenz.sid',
   secret: config.dashboard.cookieSecret,
   resave: false,
   saveUninitialized: false,

@@ -116,7 +116,7 @@
   "name.changed": "✅ Bot name set to {name}.",
   "bio.changed": "✅ Status text updated.",
   "setbio.tooLong": "Status text must be 120 characters or fewer.",
-  "connect.title": "NOAURA BOT",
+  "connect.title": "AkenZ MD",
   "connect.already": "This session is already connected.",
   "connect.noNumber": "Enter the WhatsApp number in international format, e.g. +94 771234567.",
   "label.name": "Name",

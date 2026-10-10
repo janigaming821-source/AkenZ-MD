@@ -1,4 +1,4 @@
-// NOAURA BOT — database schema (SQLite, single-owner personal deployment)
+// AkenZ MD — database schema (SQLite, single-owner personal deployment)
 // SQLite has no enum/json column types in Prisma, so enum-like fields are
 // validated where they are written and JSON-ish fields are stored as strings.
 
@@ -14,7 +14,7 @@ datasource db {
 // Single row (id = 1). Global bot settings.
 model BotConfig {
   id                Int      @id @default(1)
-  name              String   @default("NOAURA BOT")
+  name              String   @default("AkenZ MD")
   version           String   @default("1.0.0")
   prefix            String   @default(".")
   language          String   @default("en")
@@ -26,7 +26,7 @@ model BotConfig {
   mediaEnabled      Boolean  @default(true)
   groupToolsEnabled Boolean  @default(true)
   privateChatsOnly  Boolean  @default(false)
-  statusText        String   @default("NOAURA BOT")
+  statusText        String   @default("AkenZ MD")
   maxWarnings       Int      @default(3)
   warningAction     String   @default("mute")
   dashboardHash     String?
