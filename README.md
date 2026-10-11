@@ -1,3 +1,12 @@
+---
+title: AkenZ MD
+emoji: "\U0001F916"
+colorFrom: orange
+colorTo: red
+sdk: docker
+app_port: 7860
+---
+
 # AkenZ MD
 
 A single-owner personal WhatsApp bot that runs on **your own WhatsApp account**.
