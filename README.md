@@ -222,9 +222,11 @@ Stop it with `Ctrl+C`; it closes the HTTP server and the socket before exiting.
 
 `http://127.0.0.1:3000` — sign in with `DASHBOARD_USERNAME` and the password.
 
-Ten views: Dashboard, WhatsApp, Commands, Auto Reply, Groups, Media, AI,
-Scheduler, Logs, Settings. All data comes from the running process; empty tables
-say `Nothing stored yet` rather than showing invented numbers.
+- Ten views: Dashboard, WhatsApp, Commands, Auto Reply, Groups, Media, AI,
+  Scheduler, Logs, Settings. All data comes from the running process; empty tables
+  say `Nothing stored yet` rather than showing invented numbers.
+- Settings → **Brand image** takes the menu banner (JPEG or PNG up to 3 MB) and
+  shows what is stored; `.setlogo` does the same from WhatsApp.
 
 - The password is bcrypt-hashed and stored in the database. `DASHBOARD_PASSWORD`
   is only read once, on first boot.
@@ -245,30 +247,55 @@ The cookie is not marked `Secure` because the default bind is loopback, where a
 Prefix `.`, so `.menu`. Every command also answers in both languages.
 
 **General** — `menu` · `help [command]` · `ping` · `speed` · `bot` · `owner` ·
-`runtime` · `status` · `profile` · `language <en|si>` · `settings`
+`runtime` · `status` · `profile` · `language <en|si>` · `settings` ·
+`react <emoji>` (reply to a message) · `poll <question> | a | b`
 
 **Tools** — `weather <city>` · `translate <si|en> <text>` · `qr <text|url>` ·
-`short <url>` · `urlinfo <url>`
+`short <url>` · `urlinfo <url>` · `wiki <topic>` · `define <word>` ·
+`pp [group]` (profile picture of a person or the group)
 
-**AI** — `ai <question>` (reports honestly that it is off until you set a key)
+**AI** — `ai <question>` (reports honestly that it is off until you set a key).
+`AI_MODEL` has to name a model Google still serves to this key; a stale one
+answers 404, which is why the dashboard's Settings page shows the provider.
 
-**Media** — `music <search or url>` · `video <url>` · `sticker` (send or reply to
-a photo/video) · `toimg` (reply to a sticker) · `compress [kb]` ·
-`resize <width> <height>`
+**Media** — `music <search or url>` (`.play`, `.song`) · `video <search or url>`
+(`.vid`, `.ytv`) · `sticker` (send or reply to a photo/video) · `toimg` (reply to
+a sticker) · `compress [kb]` · `resize <width> <height>` · `toaudio` (`.mp3`,
+`.yta` — sound from a video) · `vn` (`.voice` — anything as a voice note) ·
+`togif` (video or animated sticker as a GIF)
 
-**Group** — `groupinfo` · `admins` · `tagall [message]` · `rules [text]` ·
-`link` · `promote @user` · `demote @user` · `add <number>` · `remove @user` ·
-`mute` · `unmute` · `warn @user [reason]` · `warnings [@user] [clear]`
+**Group** — `groupinfo` · `admins` · `tagall [message]` · `tagadmin` ·
+`hidetag <message>` · `rules [text]` · `link` · `promote @user` · `demote @user` ·
+`add <number>` · `remove @user` · `mute` · `unmute` · `warn @user [reason]` ·
+`warnings [@user] [clear]` · `del` (reply to the message) ·
+`ephemeral <off|24h|7d|90d>` · `antilink` · `antidelete` · `antispam`
 
 **Owner** — `broadcast <message>` · `restart` · `shutdown` · `setprefix <char>` ·
-`setname <name>` · `setbio <text>` · `autoreply add <trigger> => <response>` ·
+`setname <name>` · `setbio <text>` · `setpp` (send or reply to a photo) ·
+`setlogo` / `dellogo` (the picture the menu is sent with) ·
+`groups` · `leave <groupJid>` · `autoreply add <trigger> => <response>` ·
 `addcmd <name> <response>` · `delcmd <name>` · `listcmd` · `users` · `stats` ·
 `block @user|<number>` · `unblock @user|<number>` · `ban @user` · `unban @user` ·
 `reload` · `backup` · `database` · `schedule <minutes> <message>` · `schedules` ·
 `delschedule <id>`
 
-58 commands in total; `.listcmd` and the dashboard's Commands page list the
+81 commands in total; `.listcmd` and the dashboard's Commands page list the
 current set.
+
+### Branding one bot per buyer
+
+Name, prefix, language, status line and the menu picture are all stored in the
+database, so a buyer's bot is set up once and keeps its brand across restarts:
+
+- `.setname`, `.setprefix`, `.setbio`, `.setpp` from WhatsApp, or the Settings page.
+- `.setlogo` (send a photo or reply to one) and Settings → **Brand image** both
+  store the banner as base64 in `BotConfig`. The menu sends that, and falls back
+  to `assets/menu.jpg` when nothing was uploaded. It is in the database rather
+  than on disk because a cloud container comes back without whatever was written
+  into its own folders.
+
+One buyer is one deployment: their own WhatsApp pairing, their own Turso
+database, their own brand.
 
 Auto-reply triggers are comma-separated. `hello, hi` matches exactly
 (case-insensitive); `price*` matches anything containing *price*.
@@ -305,6 +332,13 @@ Install them free:
 Missing tools produce a plain message in chat, never a stack trace. Media jobs
 are capped by `MEDIA_MAX_MB` and `MEDIA_RATE_LIMIT_PER_HOUR`, downloads time out,
 and any URL that resolves to a private address is refused.
+
+On Linux the bot fixes this itself: at boot `src/media/bootstrap.ts` downloads the
+upstream static `yt-dlp_linux`, `ffmpeg` and `ffprobe` into `data/bin` (about
+120 MB, once) and registers them, which is how the cloud container does music and
+video without a package manager. Windows and macOS keep using whatever you
+installed; the bootstrap never runs there. `GET /api/media/tools` on the dashboard
+reports the versions it found.
 
 ---
 
@@ -384,9 +418,26 @@ logout, an app update, or if `data/secrets.json` is lost.
 
 ---
 
-## Running in the cloud (Render + Turso, free tier)
+## Running in the cloud (bonto.dev + Turso, free tier)
 
-The repo ships as a self-contained cloud deployment: a `Dockerfile` that builds
+What is live today is **bonto.dev** (`https://akenz-md.bonto.run`) with Turso, using
+the same env vars as below. `node deploy-bonto.mjs` uploads `dist/`, the dashboard's
+`src/web/public/`, `locales/` and `prisma/schema.prisma`, then the container
+reinstalls; free bonto sleeps after 30 idle minutes, so the GitHub Actions pinger in
+`.github/workflows/` wakes `/health` every 5 minutes.
+
+The uploaded `package.json` starts the app with `prisma generate && node dist/index.js`.
+That generate is not decoration: npm skips a project's `postinstall` when the
+dependency tree has not changed, so a schema change uploaded on its own would leave
+the container running a client built from the previous schema — every new column
+unknown at runtime.
+
+Prisma's own migrate commands cannot reach a `libsql://` URL, so remote schema
+changes go through `node migrate-turso.mjs <sql-file>` (or `--sql "…"`). It reads
+`DATABASE_URL` and `TURSO_AUTH_TOKEN` from the bonto app's own environment, which
+means no database credential is ever typed or printed.
+
+The repo also ships as a self-contained cloud deployment: a `Dockerfile` that builds
 and runs the bot, and a `render.yaml` blueprint that defines one free Docker web
 service with a `/health` check. The only state a container loses on restart is
 retrieved from a remote database, so two free accounts cover it:
@@ -411,6 +462,28 @@ stores the WhatsApp session in the database instead of files; with the default
 
 Media commands on the free plan run on a small CPU (512 MB), so large video
 merges are slower than on the local PC.
+
+---
+
+## Selling it: the site in `site/`
+
+`site/` is a static one-page shop for the bot (no build step, no framework, no
+server code): plans at **Rs 120 / month, Rs 800 / year, Rs 1000 lifetime**, an order
+form that only builds a pre-filled `wa.me` message to **077 604 1953**, and the EZ
+Cash instructions. It submits nothing to any server, so there is nothing to host
+behind the form.
+
+It is published at `https://akenz-md-bot-5356tjkclo8.qoder.website` (Qoder Sites,
+public). To put it on the Noaura domain instead:
+
+```bash
+CLOUDFLARE_API_TOKEN=<token> node deploy-site-cloudflare.mjs
+```
+
+That deploys `site/` to a Cloudflare Pages project called `whatsapp-bot` and creates
+the proxied `whatsapp.noaura.xyz` CNAME pointing at it. The token needs Pages:Edit
+and DNS:Edit for the `noaura.xyz` zone; no token exists on this machine today, which
+is the only thing standing between the site and that address.
 
 ---
 

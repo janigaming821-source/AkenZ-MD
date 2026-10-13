@@ -1,0 +1,41 @@
+body {
+  margin: 0;
+  background: #0e0f12;
+  color: #e8eaed;
+  font: 16px/1.55 system-ui, sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 1.6rem 1rem 3rem;
+}
+
+main {
+  max-width: 560px;
+  text-align: center;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin: 0 0 0.2rem;
+}
+
+p {
+  color: #97a0af;
+  margin: 0.35rem 0;
+}
+
+#qr {
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px;
+  width: 280px;
+  height: 280px;
+  display: none;
+}
+
+#note {
+  color: #ffb066;
+}
+
+#note.done {
+  color: #2fbf71;
+}

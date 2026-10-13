@@ -1,46 +1,16 @@
 import { prisma } from './client.js';
+import { allCommands } from '../bot/registry.js';
 import type { CustomCommand } from '../types.js';
 
-const RESERVED = new Set([
-  'help',
-  'menu',
-  'ping',
-  'bot',
-  'owner',
-  'runtime',
-  'speed',
-  'status',
-  'profile',
-  'language',
-  'settings',
-  'addcmd',
-  'delcmd',
-  'listcmd',
-  'autoreply',
-  'broadcast',
-  'restart',
-  'shutdown',
-  'eval',
-  'exec',
-  'setprefix',
-  'setname',
-  'setbio',
-  'setstatus',
-  'users',
-  'stats',
-  'ban',
-  'unban',
-  'block',
-  'unblock',
-  'reload',
-  'backup',
-  'database',
-  'schedule',
-  'schedules',
-  'delschedule',
-]);
-
-export const isReservedName = (name: string) => RESERVED.has(name.toLowerCase());
+/**
+ * A custom command never overrides a built-in one, so a name the handler already
+ * answers would sit in the database looking broken. Asking the registry keeps
+ * this true as commands are added — the list it replaced was stale within a day.
+ */
+export const isReservedName = (name: string): boolean => {
+  const wanted = name.toLowerCase();
+  return allCommands().some((c) => c.name === wanted || (c.aliases ?? []).includes(wanted));
+};
 
 export async function addCustomCommand(
   name: string,

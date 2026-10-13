@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { initAuthCreds, makeCacheableSignalKeyStore, addTransactionCapability } from '@whiskeysockets/baileys';
-import type { AuthenticationCreds, AuthenticationState, SignalDataSet, SignalDataTypeMap, SignalKeyStore } from '@whiskeysockets/baileys';
+import { initAuthCreds, makeCacheableSignalKeyStore, addTransactionCapability } from 'baileys';
+import type { AuthenticationCreds, AuthenticationState, SignalDataSet, SignalDataTypeMap, SignalKeyStore } from 'baileys';
 import { config } from '../config/env.js';
 import { prisma } from '../db/client.js';
 import { decryptJson, encryptJson } from '../lib/crypto.js';

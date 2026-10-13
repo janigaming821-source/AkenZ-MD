@@ -2,6 +2,7 @@ import { registerCommand } from '../bot/registry.js';
 import { generalCommands } from './general.js';
 import { toolCommands } from './tools.js';
 import { mediaCommands } from './media.js';
+import { extraCommands } from './extras.js';
 import { groupCommands } from './group.js';
 import { ownerCommands } from './owner.js';
 import { scheduleCommands } from './schedule.js';
@@ -12,6 +13,7 @@ const all: Command[] = [
   ...generalCommands,
   ...toolCommands,
   ...mediaCommands,
+  ...extraCommands,
   ...groupCommands,
   ...ownerCommands,
   ...scheduleCommands,

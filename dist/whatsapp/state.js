@@ -8,6 +8,7 @@ const state = {
     lastError: null,
     pairingCode: null,
     pairingCodeExpiresAt: null,
+    pairingQr: null,
     reconnectAttempt: 0,
 };
 export class ConnectionStore extends EventEmitter {

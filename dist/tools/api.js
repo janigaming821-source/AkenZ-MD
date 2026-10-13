@@ -195,7 +195,7 @@ export async function shortenUrl(url) {
 }
 // ── Wikipedia ────────────────────────────────────────────────────────────
 // Wikimedia APIs 403 requests carrying default library User-Agents.
-const WIKI_HEADERS = { 'User-Agent': 'NOAURA-BOT/1.0 (personal WhatsApp bot)' };
+const WIKI_HEADERS = { 'User-Agent': 'AkenZ-MD/1.0 (personal WhatsApp bot)' };
 export async function wikiSummary(query) {
     const trimmed = query.trim();
     if (!trimmed)

@@ -349,6 +349,18 @@ label {
   margin-bottom: 0.9rem;
 }
 
+.brand-preview {
+  min-height: 3.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.brand-preview img {
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
 /* ── Data display ──────────────────────────────────────────────────────── */
 .pill {
   border-radius: 999px;
@@ -387,6 +399,23 @@ label {
   border-radius: var(--radius);
   padding: 0.9rem;
   margin: 0.8rem 0 0.4rem;
+}
+
+.qr-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.8rem 0;
+}
+
+.qr-box img {
+  width: 260px;
+  height: 260px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
 }
 
 .detail {

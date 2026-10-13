@@ -21,6 +21,8 @@ export interface ConnectionState {
   /** Active pairing code, only ever shown to the owner in the private dashboard. */
   pairingCode: string | null;
   pairingCodeExpiresAt: number | null;
+  /** Current pairing QR payload, for scan-based linking. */
+  pairingQr: string | null;
   reconnectAttempt: number;
 }
 
@@ -33,6 +35,7 @@ const state: ConnectionState = {
   lastError: null,
   pairingCode: null,
   pairingCodeExpiresAt: null,
+  pairingQr: null,
   reconnectAttempt: 0,
 };
 

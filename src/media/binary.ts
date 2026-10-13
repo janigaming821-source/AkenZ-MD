@@ -18,6 +18,16 @@ export function toolCommand(tool: MediaTool): string {
   return resolvedPath[tool] ?? PATH_NAMES[tool];
 }
 
+/**
+ * Point a tool at a binary the process placed itself (see bootstrap.ts) and
+ * forget the earlier availability verdict — availability is memoized, so a
+ * `false` recorded before the download would outlive the download.
+ */
+export function registerToolPath(tool: MediaTool, path: string): void {
+  resolvedPath[tool] = path;
+  availability.delete(tool);
+}
+
 export interface RunResult {
   code: number;
   stdout: string;

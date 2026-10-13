@@ -17,6 +17,8 @@ import { normalizePhone } from '../config/env.js';
 
 const RESET = '\x1b[0m';
 const ORANGE = '\x1b[38;5;208m';
+/** How long the helper keeps a live code on screen while waiting for the phone. */
+const PAIRING_WINDOW_MS = 300_000;
 
 async function main(): Promise<void> {
   loadLocales();
@@ -33,20 +35,37 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nPairing ${ORANGE}${number}${RESET} …`);
-  const code = await whatsapp.requestPairing(number);
 
-  console.log(`
-  ${ORANGE}PAIRING CODE${RESET}
+  let announced = '';
+  const onState = (state: { pairingCode?: string | null }) => {
+    if (state.pairingCode && state.pairingCode !== announced) {
+      announced = state.pairingCode;
+      printCode(announced);
+    }
+  };
+  connection.on('change', onState);
 
-      ${ORANGE}${code}${RESET}
+  // A WhatsApp code lives about a minute and is never replaced behind the owner's
+  // back, so ask for the next one as soon as this one dies and keep the terminal
+  // showing a live code for the whole window.
+  const deadline = Date.now() + PAIRING_WINDOW_MS;
+  let paired = false;
+  while (!paired && Date.now() < deadline) {
+    announced = '';
+    try {
+      onState({ pairingCode: await whatsapp.requestPairing(number) });
+    } catch (error) {
+      if (connection.isConnected) break;
+      console.error(error instanceof Error ? error.message : String(error));
+    }
 
-  WhatsApp → Settings → Linked devices → Link a device →
-  ${ORANGE}Link with phone number${RESET} → type the code.
+    while (Date.now() < deadline && connection.get().pairingCode && !connection.isConnected) {
+      await sleep(500);
+    }
+    paired = connection.isConnected;
+  }
+  connection.off('change', onState);
 
-  The code expires in about 60 seconds. Waiting for WhatsApp…
-`);
-
-  const paired = await waitForConnection(90_000);
   if (!paired) {
     console.error('\nNot paired yet. Run the command again, or pair from the dashboard at');
     console.error(`http://${config.dashboard.host}:${config.dashboard.port} (page: WhatsApp).\n`);
@@ -66,23 +85,22 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-function waitForConnection(timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const finish = (value: boolean) => {
-      clearTimeout(timer);
-      connection.off('change', onChange);
-      resolve(value);
-    };
-    const onChange = (state: { status: string }) => {
-      if (state.status === 'connected') finish(true);
-      if (state.status === 'logged_out' || state.status === 'session_expired' || state.status === 'blocked_by_whatsapp') {
-        finish(false);
-      }
-    };
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    connection.on('change', onChange);
-    if (connection.isConnected) finish(true);
-  });
+function printCode(code: string): void {
+  console.log(`
+  ${ORANGE}PAIRING CODE${RESET}
+
+      ${ORANGE}${code}${RESET}
+
+  WhatsApp → Settings → Linked devices → Link a device →
+  ${ORANGE}Link with phone number${RESET} → type ${ORANGE}${code}${RESET} now.
+
+  This code expires in about 60 seconds; a fresh one prints here if it renews.
+  Waiting for WhatsApp…
+`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch((error) => {

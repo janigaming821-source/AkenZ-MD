@@ -1,10 +1,9 @@
 import { config } from '../config/env.js';
+import { menuImage } from '../db/branding.js';
 import { updateConfig } from '../db/config.js';
 import { getStats } from '../db/stats.js';
 import { getUser } from '../db/users.js';
 import { languageName, t } from '../i18n/index.js';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { Command, CommandCategory, CommandContext, Language } from '../types.js';
 import { connection, statusLabel } from '../whatsapp/state.js';
 import { whatsapp } from '../whatsapp/client.js';
@@ -23,19 +22,6 @@ const SECTION_ICONS: Partial<Record<CommandCategory, string>> = {
   tools: '🛠️',
   utility: '🗒️',
 };
-
-let cachedMenuImage: Buffer | null | undefined;
-
-/** Optional banner sent together with the menu. Missing file → text-only menu. */
-function menuImage(): Buffer | null {
-  if (cachedMenuImage !== undefined) return cachedMenuImage;
-  try {
-    cachedMenuImage = readFileSync(resolve(process.cwd(), 'assets', 'menu.jpg'));
-  } catch {
-    cachedMenuImage = null;
-  }
-  return cachedMenuImage;
-}
 
 const menu: Command = {
   name: 'menu',
@@ -76,7 +62,7 @@ const menu: Command = {
     lines.push('', ctx.t('menu.hint', { prefix: ctx.prefix }));
     const text = box(ctx.t('menu.title', { name: ctx.settings.name }), lines);
 
-    const image = menuImage();
+    const image = await menuImage();
     if (image) {
       await ctx.sendMedia({ image, caption: text });
       return;

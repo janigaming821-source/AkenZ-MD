@@ -1,4 +1,4 @@
-import type { WASocket } from '@whiskeysockets/baileys';
+import type { WASocket } from 'baileys';
 
 const ADMIN_CACHE_MS = 30_000;
 type RoleMap = { roles: Map<string, 'admin' | 'superadmin' | undefined>; at: number };

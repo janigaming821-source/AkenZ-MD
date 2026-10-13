@@ -23,7 +23,7 @@ const REDACTED = [
 export const logger = pino({
     level: config.logLevel,
     redact: { paths: REDACTED, censor: '[redacted]' },
-    base: { name: 'noaura' },
+    base: { name: 'akenz' },
     timestamp: pino.stdTimeFunctions.isoTime,
 });
 //# sourceMappingURL=logger.js.map

@@ -1,4 +1,4 @@
-import { downloadMediaMessage } from '@whiskeysockets/baileys';
+import { downloadMediaMessage } from 'baileys';
 import { logger } from '../lib/logger.js';
 /** Message bodies live under different keys depending on type and edition. */
 export function getText(message) {

@@ -1,15 +1,17 @@
 import express from 'express';
-import { json } from 'express';
+import { json, raw } from 'express';
 import helmet from 'helmet';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import QRCode from 'qrcode';
 import { config, normalizePhone } from '../config/env.js';
 import { prisma, databaseIsUp } from '../db/client.js';
 import { getStats } from '../db/stats.js';
 import { botLog } from '../db/botLog.js';
 import { getConfig, updateConfig } from '../db/config.js';
 import { addAutoReply, deleteAutoReply, listAutoReplies, setAutoReplyEnabled, splitTriggers } from '../db/autoreplies.js';
-import { addCustomCommand, deleteCustomCommand, listCustomCommands } from '../db/customCommands.js';
+import { addCustomCommand, deleteCustomCommand, isReservedName, listCustomCommands } from '../db/customCommands.js';
+import { clearLogo, getLogo, imageFormat, LOGO_MAX_BYTES, setLogo } from '../db/branding.js';
 import { connection, statusLabel } from '../whatsapp/state.js';
 import { whatsapp } from '../whatsapp/client.js';
 import { allCommands } from '../bot/registry.js';
@@ -71,7 +73,7 @@ app.post('/api/login', async (req, res) => {
 });
 app.post('/api/logout', (req, res) => {
     req.session.destroy(() => {
-        res.clearCookie('noaura.sid');
+        res.clearCookie('akenz.sid');
         res.json({ ok: true });
     });
 });
@@ -155,8 +157,60 @@ app.get('/api/whatsapp/status', (_req, res) => {
         phoneNumber: state.phoneNumber,
         pairingCode: state.pairingCode,
         pairingCodeExpiresAt: state.pairingCodeExpiresAt,
+        hasPairingQr: Boolean(state.pairingQr),
         lastError: state.lastError,
     });
+});
+/**
+ * QR linking is the other half of pairing. WhatsApp counts every pairing-code
+ * request against a per-account linking limit and answers the overflow with
+ * 429 rate-overlimit, while a scan uses a different handshake — so when codes
+ * are throttled the QR is the path that still works.
+ */
+app.get('/api/whatsapp/qr', async (_req, res) => {
+    const qr = connection.get().pairingQr;
+    if (!qr) {
+        res.status(404).json({ error: 'No QR is being broadcast right now.' });
+        return;
+    }
+    try {
+        res.json({ dataUrl: await QRCode.toDataURL(qr, { margin: 1, width: 320 }) });
+    }
+    catch (error) {
+        logger.error({ err: error }, 'QR rendering failed');
+        res.status(500).json({ error: 'The QR could not be rendered.' });
+    }
+});
+/**
+ * Pairing has to survive asset caching: the edge keeps serving stale dashboard
+ * files after a deploy, and an owner who cannot see the QR cannot link a
+ * device. This page is served dynamically with no-store, and its assets are
+ * stamped per process start, so a deploy can never leave a browser on old code.
+ */
+const PAIR_ASSETS_STAMP = Date.now();
+const PAIR_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Link this device — AkenZ MD</title>
+<link rel="stylesheet" href="/pair.css?v=${PAIR_ASSETS_STAMP}">
+</head>
+<body>
+<main>
+  <h1>Scan to link this number</h1>
+  <p>WhatsApp &#8594; Settings &#8594; Linked devices &#8594; Link a device &#8594; point the camera at the square.</p>
+  <p>දුරකථනයේ: WhatsApp &#8594; Settings &#8594; Linked devices &#8594; Link a device &#8594; QR එක කැමරාවට පෙන්වන්න.</p>
+  <img id="qr" alt="WhatsApp pairing QR">
+  <p id="note">Waiting for a QR from WhatsApp. Keep this page open — it refreshes by itself.</p>
+</main>
+<script src="/pair.js?v=${PAIR_ASSETS_STAMP}" defer></script>
+</body>
+</html>
+`;
+app.get('/pair', requireAuth, (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(PAIR_PAGE);
 });
 app.post('/api/whatsapp/disconnect', async (_req, res) => {
     await whatsapp.disconnect();
@@ -192,8 +246,13 @@ const SETTINGS_KEYS = [
     'warningAction',
 ];
 app.get('/api/settings', async (_req, res) => {
-    const { dashboardHash: _hash, ...safe } = await getConfig();
-    res.json({ settings: safe, keys: { ai: config.ai.provider, weather: config.weather.provider, media: config.media.enabled } });
+    // logoData is a megabyte of base64; the dashboard reads it from /api/settings/logo.
+    const { dashboardHash: _hash, logoData: _logo, ...safe } = await getConfig();
+    res.json({
+        settings: safe,
+        hasLogo: Boolean(_logo),
+        keys: { ai: config.ai.provider, weather: config.weather.provider, media: config.media.enabled },
+    });
 });
 app.post('/api/settings', async (req, res) => {
     const body = (req.body ?? {});
@@ -220,6 +279,36 @@ app.post('/api/settings', async (req, res) => {
     await botLog('info', 'dashboard', 'Settings updated');
     res.json({ ok: true });
 });
+/**
+ * Brand image for the menu banner. The bytes travel as the request body with an
+ * image content type, which keeps the 64kb JSON limit out of the way and saves
+ * the browser from base64-ing a megabyte before upload.
+ */
+app.get('/api/settings/logo', async (_req, res) => {
+    const logo = await getLogo();
+    if (!logo) {
+        res.status(404).json({ error: 'No brand image is set.' });
+        return;
+    }
+    res.set({ 'Content-Type': logo.mime, 'Cache-Control': 'no-store' });
+    res.send(Buffer.from(logo.data, 'base64'));
+});
+app.put('/api/settings/logo', raw({ type: ['image/jpeg', 'image/png'], limit: LOGO_MAX_BYTES }), async (req, res) => {
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const mime = imageFormat(bytes);
+    if (!mime) {
+        res.status(400).json({ error: 'Upload a JPEG or PNG image under 3 MB.' });
+        return;
+    }
+    await setLogo(bytes, mime);
+    await botLog('info', 'dashboard', 'Brand image updated', { bytes: bytes.length });
+    res.json({ ok: true, bytes: bytes.length });
+});
+app.delete('/api/settings/logo', async (_req, res) => {
+    await clearLogo();
+    await botLog('info', 'dashboard', 'Brand image removed');
+    res.json({ ok: true });
+});
 // ── Custom commands ──────────────────────────────────────────────────────
 app.get('/api/commands', async (_req, res) => {
     const [custom, builtIn] = await Promise.all([listCustomCommands(), Promise.resolve(allCommands())]);
@@ -240,6 +329,12 @@ app.post('/api/commands', async (req, res) => {
     const clean = String(name ?? '').toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!clean || !String(response ?? '').trim()) {
         res.status(400).json({ error: 'name and response are both required' });
+        return;
+    }
+    // A built-in always answers first, so a custom command under its name would
+    // sit in the database doing nothing and look broken to the owner.
+    if (isReservedName(clean)) {
+        res.status(409).json({ error: `.${clean} is already a built-in command. Pick another name.` });
         return;
     }
     try {

@@ -27,6 +27,10 @@ model BotConfig {
   groupToolsEnabled Boolean  @default(true)
   privateChatsOnly  Boolean  @default(false)
   statusText        String   @default("AkenZ MD")
+  /// Menu banner image, base64. Kept in the database so an uploaded brand survives
+  /// a redeploy, where the container's disk (and assets/) is ephemeral.
+  logoData          String?
+  logoMime          String?
   maxWarnings       Int      @default(3)
   warningAction     String   @default("mute")
   dashboardHash     String?

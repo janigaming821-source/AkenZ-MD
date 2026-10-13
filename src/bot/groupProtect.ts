@@ -1,4 +1,4 @@
-import type { WAMessageKey } from '@whiskeysockets/baileys';
+import type { WAMessageKey } from 'baileys';
 import { whatsapp, type InboundMessage } from '../whatsapp/client.js';
 import { getGroupSettings } from '../db/groups.js';
 import { hasAdminRights } from './permissions.js';

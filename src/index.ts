@@ -5,6 +5,7 @@ import { connectDatabase, disconnectDatabase } from './db/client.js';
 import { getConfig } from './db/config.js';
 import { logError, logInfo } from './db/botLog.js';
 import { loadLocales } from './i18n/index.js';
+import { ensureMediaTools } from './media/bootstrap.js';
 import { registerAllCommands } from './commands/index.js';
 import { handleInbound } from './bot/handler.js';
 import { handleParticipants } from './bot/events.js';
@@ -92,6 +93,9 @@ async function main(): Promise<void> {
     });
 
   startScheduler();
+  // Downloads yt-dlp/ffmpeg on hosts that ship without them. Deliberately not
+  // awaited: a slow mirror must never delay the dashboard or the socket.
+  void ensureMediaTools();
 
   const state = connection.get();
   banner([

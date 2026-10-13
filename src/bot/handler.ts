@@ -1,4 +1,4 @@
-import type { AnyMessageContent, WAMessage } from '@whiskeysockets/baileys';
+import type { AnyMessageContent, WAMessage } from 'baileys';
 import { config } from '../config/env.js';
 import { getConfig } from '../db/config.js';
 import { matchAutoReply } from '../db/autoreplies.js';

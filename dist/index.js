@@ -4,6 +4,7 @@ import { connectDatabase, disconnectDatabase } from './db/client.js';
 import { getConfig } from './db/config.js';
 import { logError, logInfo } from './db/botLog.js';
 import { loadLocales } from './i18n/index.js';
+import { ensureMediaTools } from './media/bootstrap.js';
 import { registerAllCommands } from './commands/index.js';
 import { handleInbound } from './bot/handler.js';
 import { handleParticipants } from './bot/events.js';
@@ -22,7 +23,7 @@ function banner(lines) {
     const pad = (s) => s + ' '.repeat(width - plainLength(s));
     console.log('');
     console.log(`${ORANGE}╭${'─'.repeat(width + 2)}╮${RESET}`);
-    console.log(`${ORANGE}│${RESET} ${pad('NOAURA BOT')} ${ORANGE}│${RESET}`);
+    console.log(`${ORANGE}│${RESET} ${pad('AkenZ MD')} ${ORANGE}│${RESET}`);
     console.log(`${ORANGE}├${'─'.repeat(width + 2)}┤${RESET}`);
     for (const line of lines)
         console.log(`${ORANGE}│${RESET} ${pad(line)} ${ORANGE}│${RESET}`);
@@ -79,6 +80,9 @@ async function main() {
         console.error(`WhatsApp start failed: ${error instanceof Error ? error.message : String(error)}`);
     });
     startScheduler();
+    // Downloads yt-dlp/ffmpeg on hosts that ship without them. Deliberately not
+    // awaited: a slow mirror must never delay the dashboard or the socket.
+    void ensureMediaTools();
     const state = connection.get();
     banner([
         `Status:    ${state.status === 'connected' ? 'ONLINE 🟢' : 'STARTING 🟡'}`,
@@ -103,7 +107,7 @@ async function shutdown(signal) {
     if (shuttingDown)
         return;
     shuttingDown = true;
-    console.log(`\n${signal} received — shutting down NOAURA BOT…`);
+    console.log(`\n${signal} received — shutting down AkenZ MD…`);
     stopScheduler();
     try {
         await whatsapp.disconnect();

@@ -7,7 +7,7 @@ const hexKey = z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex characters (32 bytes)');
 const rawSchema = z.object({
-    BOT_NAME: z.string().min(1).default('NOAURA BOT'),
+    BOT_NAME: z.string().min(1).default('AkenZ MD'),
     BOT_VERSION: z.string().min(1).default('1.0.0'),
     OWNER_NUMBER: z.string().optional().default(''),
     OWNER_JID: z.string().optional().default(''),
@@ -26,7 +26,7 @@ const rawSchema = z.object({
     AI_PROVIDER: z.enum(['gemini', 'openai', 'none']).default('none'),
     AI_API_KEY: z.string().optional().default(''),
     AI_MODEL: z.string().optional().default(''),
-    AI_SYSTEM_PROMPT: z.string().default('You are NOAURA BOT. Answer in the language the user wrote in.'),
+    AI_SYSTEM_PROMPT: z.string().default('You are AkenZ MD. Answer in the language the user wrote in.'),
     AI_MAX_CHARS: z.coerce.number().int().min(100).max(8000).default(1800),
     AI_HISTORY_LIMIT: z.coerce.number().int().min(0).max(50).default(12),
     WEATHER_PROVIDER: z.enum(['open-meteo', 'openweathermap']).default('open-meteo'),
@@ -190,7 +190,8 @@ function build() {
         ai: {
             provider: e.AI_PROVIDER,
             apiKey: e.AI_API_KEY,
-            model: e.AI_MODEL || (e.AI_PROVIDER === 'gemini' ? 'gemini-3.8-flash' : e.AI_PROVIDER === 'openai' ? 'gpt-4o-mini' : ''),
+            // 3.8 answers 503 for this key today; 3.7 was verified serving requests.
+            model: e.AI_MODEL || (e.AI_PROVIDER === 'gemini' ? 'gemini-3.7-flash' : e.AI_PROVIDER === 'openai' ? 'gpt-4o-mini' : ''),
             systemPrompt: e.AI_SYSTEM_PROMPT,
             maxChars: e.AI_MAX_CHARS,
             historyLimit: e.AI_HISTORY_LIMIT,

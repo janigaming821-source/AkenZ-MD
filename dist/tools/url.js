@@ -62,7 +62,7 @@ export async function inspectUrl(startUrl) {
             maxRedirects: 5,
             timeout: 15_000,
             validateStatus: () => true,
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NOAURABot/1.0)' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AkenZMD/1.0)' },
         });
         return {
             ok: true,

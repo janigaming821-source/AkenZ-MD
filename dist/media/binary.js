@@ -12,6 +12,15 @@ const resolvedPath = {
 export function toolCommand(tool) {
     return resolvedPath[tool] ?? PATH_NAMES[tool];
 }
+/**
+ * Point a tool at a binary the process placed itself (see bootstrap.ts) and
+ * forget the earlier availability verdict — availability is memoized, so a
+ * `false` recorded before the download would outlive the download.
+ */
+export function registerToolPath(tool, path) {
+    resolvedPath[tool] = path;
+    availability.delete(tool);
+}
 export function runTool(tool, args, timeoutMs = config.media.timeoutMs) {
     return new Promise((resolvePromise, reject) => {
         const child = spawn(toolCommand(tool), args, { windowsHide: true, timeout: timeoutMs });

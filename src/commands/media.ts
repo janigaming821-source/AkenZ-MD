@@ -53,6 +53,7 @@ const music: Command = {
   description: 'Find a track and send it as audio.',
   usage: 'music <search or url>',
   inMenu: true,
+  aliases: ['play', 'song'],
   rateLimitSeconds: 20,
   async execute(ctx) {
     const query = ctx.fullArgs.trim();
@@ -86,6 +87,7 @@ const video: Command = {
   description: 'Search YouTube and send the video.',
   usage: 'video <search or url>',
   inMenu: true,
+  aliases: ['vid', 'ytv'],
   rateLimitSeconds: 30,
   async execute(ctx) {
     const query = ctx.fullArgs.trim();
@@ -133,7 +135,7 @@ async function reportMediaFailure(ctx: CommandContext, error: unknown): Promise<
 }
 
 /** Reads the media attached to the command, or to the message it quotes. */
-async function inboundMedia(ctx: CommandContext): Promise<{ buffer: Buffer; type: string } | null> {
+export async function inboundMedia(ctx: CommandContext): Promise<{ buffer: Buffer; type: string } | null> {
   const sock = whatsapp.socket;
   if (!sock) return null;
   const source = mediaSourceMessage(ctx.message);

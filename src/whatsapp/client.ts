@@ -6,8 +6,8 @@ import {
   isJidGroup,
   isJidStatusBroadcast,
   jidNormalizedUser,
-} from '@whiskeysockets/baileys';
-import type { AnyMessageContent, GroupParticipant, WAMessage, WAMessageKey, WASocket } from '@whiskeysockets/baileys';
+} from 'baileys';
+import type { AnyMessageContent, GroupParticipant, WAMessage, WAMessageKey, WASocket } from 'baileys';
 import { pino } from 'pino';
 import { config } from '../config/env.js';
 import { botLog, logError, logInfo, logWarn } from '../db/botLog.js';
@@ -55,6 +55,8 @@ const PAIRING_INTENT_MS = 4 * 60_000;
 const PAIRING_RETRY_DELAY_MS = 2_500;
 /** How long Baileys may hold one QR reference before moving to the next. */
 const PAIRING_SOCKET_HOLD_MS = 120_000;
+/** Gap between registration attempts while nobody has asked for a code yet. */
+const QR_WINDOW_RETRY_MS = 30_000;
 const MAX_RECONNECT_ATTEMPTS = 12;
 const BACKOFF_CAP_MS = 60_000;
 
@@ -98,7 +100,7 @@ export class WhatsAppClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private attempts = 0;
   private shuttingDown = false;
-  private pairingPending = false;
+  private pairingRequest: Promise<string> | null = null;
   private pairingTimer: NodeJS.Timeout | null = null;
   private readyResolve: (() => void) | null = null;
   /** Set once the server has proved this socket can carry an IQ. */
@@ -317,7 +319,9 @@ export class WhatsAppClient {
         onParticipants({
           jid: data.id,
           action: data.action as ParticipantEvent['action'],
-          participants: data.participants,
+          // Baileys 7 hands back participant objects; the rest of the bot works
+          // with plain JIDs, so flatten here rather than leaking the shape inward.
+          participants: data.participants.map((p) => (typeof p === 'string' ? p : p.id)),
         }).catch((error) => {
           logError('groups', 'Participant event failed', {
             detail: error instanceof Error ? error.message : String(error),
@@ -338,15 +342,19 @@ export class WhatsAppClient {
        * A QR push is the first moment the socket is genuinely usable: it arrives
        * after the handshake, from the server itself, offering pairing references.
        * Asking for a code any earlier (on 'connecting') hits a socket that is not
-       * open yet and throws "Connection Closed". We never show the QR, but the
-       * push is exactly the signal that code pairing can proceed now.
+       * open yet and throws "Connection Closed".
        */
       this.socketReady = true;
       this.readyResolve?.();
       this.readyResolve = null;
+      connection.patch({ pairingQr: update.qr });
 
-      const target = this.activePairingNumber() ?? config.bot.ownerNumber;
-      if (target && !this.pairingPending && !connection.get().pairingCode) {
+      // Only fetch a code when the owner actually asked for one. WhatsApp counts
+      // every code request against a per-account linking limit and answers the
+      // overflow with `429 rate-overlimit`, so a socket that requests one on
+      // every restart quietly burns the owner's ability to pair at all.
+      const target = this.activePairingNumber();
+      if (target && !this.pairingRequest && !connection.get().pairingCode) {
         void this.issuePairingCode(target).catch((error) => {
           logWarn('whatsapp', 'Pairing code request failed', {
             detail: error instanceof Error ? error.message : String(error),
@@ -368,6 +376,7 @@ export class WhatsAppClient {
         reconnectAttempt: 0,
         pairingCode: null,
         pairingCodeExpiresAt: null,
+        pairingQr: null,
       });
       this.clearPairingTimer();
       this.socketReady = true;
@@ -387,7 +396,9 @@ export class WhatsAppClient {
     }
 
     if (state === 'close' || state === 'error') {
-      connection.patch({ lastDisconnectedAt: Date.now() });
+      // A QR belongs to the socket that broadcasted it. Leaving the old one on
+      // screen invites a scan that can never complete.
+      connection.patch({ lastDisconnectedAt: Date.now(), pairingQr: null });
       const reasonCode = (disconnectError as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
       const reason = reasonCode ?? DisconnectReason.connectionClosed;
       const detail = `${reasonCode ?? 'unknown'}${disconnectError?.message ? ` — ${disconnectError.message}` : ''}`;
@@ -434,13 +445,15 @@ export class WhatsAppClient {
       }
 
       /**
-       * Pairing by code runs on a clock we do not control: Baileys drops the
-       * socket as soon as the server's QR refs run out, even though we never show
-       * a QR. While the owner is mid-pairing, every drop means "start again now",
-       * not "back off and eventually give up".
+       * Pairing runs on a clock we do not control: Baileys drops the socket as
+       * soon as the server's QR refs run out, whether or not anyone asked for a
+       * code. While the account is still unpaired every drop means "offer the QR
+       * again", not "back off and go dark" — a socket that exhausts its budget
+       * leaves the owner staring at a dashboard with nothing to scan.
        */
-      if (this.activePairingNumber() && !connection.isConnected) {
-        await this.restartPairingSocket(detail);
+      if (!wasPaired && !connection.isConnected) {
+        const intent = this.activePairingNumber();
+        await this.restartPairingSocket(detail, intent ? PAIRING_RETRY_DELAY_MS : QR_WINDOW_RETRY_MS);
         return;
       }
 
@@ -462,7 +475,7 @@ export class WhatsAppClient {
   }
 
   /** Restart promptly and without consuming the reconnect budget, while pairing. */
-  private async restartPairingSocket(detail: string): Promise<void> {
+  private async restartPairingSocket(detail: string, delayMs = PAIRING_RETRY_DELAY_MS): Promise<void> {
     this.attempts = 0;
     this.clearPairingTimer();
     connection.patch({ status: 'awaiting_pairing', lastError: null });
@@ -470,7 +483,7 @@ export class WhatsAppClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
-    }, PAIRING_RETRY_DELAY_MS);
+    }, delayMs);
     this.reconnectTimer.unref();
     await botLog('info', 'whatsapp', 'Restarting the pairing socket', { detail });
   }
@@ -549,13 +562,20 @@ export class WhatsAppClient {
     return this.pairingIntent.phoneNumber;
   }
 
+  /**
+   * Single-flight on purpose. Each requestPairingCode() rotates this device's
+   * ephemeral pairing key and its ref, so two requests in the same tick leave
+   * WhatsApp holding the second key while the code on screen belongs to the
+   * first — the phone then reports "Couldn't link device". Callers that arrive
+   * while a request is in flight join it and get the same code.
+   */
   private async issuePairingCode(normalized: string): Promise<string> {
-    if (!this.sock || this.pairingPending) throw new Error('WhatsApp socket is not ready.');
+    if (!this.sock) throw new Error('WhatsApp socket is not ready.');
+    if (this.pairingRequest) return this.pairingRequest;
 
-    this.pairingPending = true;
-    try {
+    const request = (async () => {
       const code = await withTimeout(
-        this.sock.requestPairingCode(normalized),
+        this.sock!.requestPairingCode(normalized),
         PAIRING_REQUEST_TIMEOUT_MS,
         'WhatsApp did not answer the pairing request. Use Reconnect session and try again.'
       );
@@ -569,9 +589,12 @@ export class WhatsAppClient {
       this.armPairingExpiry();
       await botLog('info', 'whatsapp', 'Pairing code requested', { masked: `${code.slice(0, 2)}****` });
       return code;
-    } finally {
-      this.pairingPending = false;
-    }
+    })().finally(() => {
+      if (this.pairingRequest === request) this.pairingRequest = null;
+    });
+
+    this.pairingRequest = request;
+    return request;
   }
 
   /**
@@ -593,22 +616,16 @@ export class WhatsAppClient {
     });
   }
 
+  /**
+   * A code is never replaced on its own. Each pairing request rotates the device's
+   * pairing ref, and WhatsApp honours only the newest one — so quietly issuing a
+   * fresh code voids whatever the owner is halfway through typing. When a code
+   * dies we say so and wait for an explicit request instead.
+   */
   private armPairingExpiry(): void {
     this.clearPairingTimer();
     this.pairingTimer = setTimeout(() => {
       if (connection.isConnected) return;
-
-      const target = this.activePairingNumber();
-      if (target && this.sock) {
-        // WhatsApp's code only lives about a minute — barely long enough to read
-        // it, walk to the phone and type it. While the owner is still pairing,
-        // put a fresh code on screen instead of leaving them at an expired one.
-        void this.issuePairingCode(target).catch(() => {
-          connection.patch({ pairingCode: null, pairingCodeExpiresAt: null, lastError: 'Pairing code expired' });
-        });
-        return;
-      }
-
       connection.patch({ pairingCode: null, pairingCodeExpiresAt: null, lastError: 'Pairing code expired' });
     }, PAIRING_CODE_TTL_MS);
     this.pairingTimer.unref();

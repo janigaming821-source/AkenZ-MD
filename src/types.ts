@@ -1,4 +1,4 @@
-import type { AnyMessageContent, WAMessage } from '@whiskeysockets/baileys';
+import type { AnyMessageContent, WAMessage } from 'baileys';
 import type {
   AutoReply,
   BotConfig,

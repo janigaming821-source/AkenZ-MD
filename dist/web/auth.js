@@ -57,7 +57,7 @@ const safeEqual = (a, b) => {
     return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 };
 export const sessionMiddleware = session({
-    name: 'noaura.sid',
+    name: 'akenz.sid',
     secret: config.dashboard.cookieSecret,
     resave: false,
     saveUninitialized: false,

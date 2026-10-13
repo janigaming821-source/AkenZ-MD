@@ -254,6 +254,10 @@ async function renderWhatsapp() {
         'Last error': s.lastError ?? 'none',
       })
     );
+    // Baileys rotates the QR every ~20s, so it is re-fetched on each poll rather
+    // than once; a stale image would scan and be rejected.
+    if (s.status === 'awaiting_pairing') await paintQr(s);
+    else hideQr();
     // The server re-issues a code when WhatsApp drops the socket, so it — not the
     // original button response — is the source of truth for what is valid now.
     if (s.pairingCode) paintCode(s);
@@ -262,6 +266,32 @@ async function renderWhatsapp() {
   }
   live = { view: 'whatsapp', refresh: refreshDetail };
   await refreshDetail();
+
+  async function paintQr(s) {
+    el('pair-qr-box').hidden = false;
+    if (!s.hasPairingQr) {
+      // WhatsApp closes the socket when its QR refs run out, so there is often a
+      // gap of a few seconds between one QR and the next. Say so — an empty panel
+      // reads as a broken bot.
+      el('pair-qr').removeAttribute('src');
+      el('pair-qr-note').textContent = 'Waiting for the next QR from WhatsApp. Keep this page open — one appears within about 30 seconds.';
+      return;
+    }
+    try {
+      const { dataUrl } = await api('/api/whatsapp/qr');
+      el('pair-qr').src = dataUrl;
+      el('pair-qr-note').textContent = 'Scan this now — WhatsApp replaces the QR roughly every 30 seconds, and an old one will not pair.';
+    } catch (error) {
+      // The QR can expire between the status poll and this fetch — the next poll
+      // retries, so this is not worth a toast.
+      el('pair-qr').removeAttribute('src');
+      el('pair-qr-note').textContent = `QR just rotated (${error.message}) — the next poll brings the new one.`;
+    }
+  }
+
+  function hideQr() {
+    el('pair-qr-box').hidden = true;
+  }
 
   function paintCode(s) {
     el('pair-out').hidden = false;
@@ -515,7 +545,7 @@ const SETTINGS_FIELDS = [
 
 async function renderSettings() {
   views.replaceChildren(template('settings'));
-  const [{ settings }, integration] = await Promise.all([api('/api/settings'), api('/api/integrations')]);
+  const [{ settings, hasLogo }, integration] = await Promise.all([api('/api/settings'), api('/api/integrations')]);
   const form = el('settings-form');
   form.replaceChildren();
   const inputs = {};
@@ -567,6 +597,64 @@ async function renderSettings() {
     await api('/api/settings', { method: 'POST', body });
     el('settings-msg').textContent = `Saved at ${fmt.format(new Date())}. Prefix and language changes apply to the next message.`;
     toast('Settings saved.');
+  });
+
+  // Brand image. Painted from the API rather than the picked file, so what the
+  // owner sees is what the bot actually stored.
+  let shown = hasLogo;
+  const paintBrand = () => {
+    const box = el('brand-preview');
+    box.replaceChildren();
+    if (!shown) {
+      const note = document.createElement('p');
+      note.className = 'muted';
+      note.textContent = 'No image uploaded — the menu falls back to the built-in banner.';
+      box.appendChild(note);
+      return;
+    }
+    const img = document.createElement('img');
+    img.className = 'brand-img';
+    img.alt = 'Current brand image';
+    img.src = `/api/settings/logo?t=${Date.now()}`;
+    box.appendChild(img);
+  };
+  paintBrand();
+
+  el('brand-save').addEventListener('click', async () => {
+    const file = el('brand-file').files?.[0];
+    if (!file) {
+      toast('Choose a JPEG or PNG image first.', true);
+      return;
+    }
+    const res = await fetch('/api/settings/logo', {
+      method: 'PUT',
+      headers: {
+        'content-type': file.type || 'image/jpeg',
+        ...(csrf.token ? { 'x-csrf-token': csrf.token } : {}),
+      },
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast(data.error ?? `Upload failed (${res.status}).`, true);
+      return;
+    }
+    shown = true;
+    paintBrand();
+    el('brand-msg').textContent = `Stored ${num(Math.round(data.bytes / 1024))} kB. The next menu uses it.`;
+    toast('Brand image saved.');
+  });
+
+  el('brand-remove').addEventListener('click', async () => {
+    try {
+      await api('/api/settings/logo', { method: 'DELETE' });
+      shown = false;
+      paintBrand();
+      el('brand-msg').textContent = '';
+      toast('Brand image removed.');
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 
   el('integration-detail').replaceChildren(

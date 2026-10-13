@@ -203,7 +203,8 @@ function build() {
     ai: {
       provider: e.AI_PROVIDER,
       apiKey: e.AI_API_KEY,
-      model: e.AI_MODEL || (e.AI_PROVIDER === 'gemini' ? 'gemini-3.8-flash' : e.AI_PROVIDER === 'openai' ? 'gpt-4o-mini' : ''),
+      // 3.8 answers 503 for this key today; 3.7 was verified serving requests.
+      model: e.AI_MODEL || (e.AI_PROVIDER === 'gemini' ? 'gemini-3.7-flash' : e.AI_PROVIDER === 'openai' ? 'gpt-4o-mini' : ''),
       systemPrompt: e.AI_SYSTEM_PROMPT,
       maxChars: e.AI_MAX_CHARS,
       historyLimit: e.AI_HISTORY_LIMIT,

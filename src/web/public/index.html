@@ -111,11 +111,17 @@
 
     <template id="tpl-whatsapp">
       <div class="card">
-        <h3>Connect with a pairing code</h3>
+        <h3>Link a device</h3>
         <p class="muted">
-          No QR needed. Enter the bot's own number, then type the code inside WhatsApp under
-          Linked devices → Link with phone number.
+          Scan the QR below with WhatsApp → Settings → Linked devices → Link a device.
+          WhatsApp caps how many pairing <em>codes</em> one account can ask for, so the QR
+          is the reliable route when codes keep bouncing.
         </p>
+        <div id="pair-qr-box" class="qr-box" hidden>
+          <img id="pair-qr" alt="WhatsApp pairing QR" />
+          <p id="pair-qr-note" class="muted">This QR refreshes automatically while pairing is open.</p>
+        </div>
+        <p class="muted">Or enter the bot's own number and type the code under Linked with phone number:</p>
         <div class="row">
           <input id="pair-number" type="tel" placeholder="+94 771234567" />
           <button id="pair-btn" class="btn btn-primary" type="button">Generate Pairing Code</button>
@@ -249,6 +255,20 @@
         <div id="settings-form" class="form-grid"></div>
         <button id="settings-save" class="btn btn-primary" type="button">Save settings</button>
         <p id="settings-msg" class="muted"></p>
+      </div>
+      <div class="card">
+        <h3>Brand image</h3>
+        <p class="muted">
+          The picture the menu is sent with. It is stored in the database, so it survives a
+          restart or a redeploy. JPEG or PNG, up to 3 MB.
+        </p>
+        <div id="brand-preview" class="brand-preview"></div>
+        <div class="row wrap">
+          <input id="brand-file" type="file" accept="image/jpeg,image/png">
+          <button id="brand-save" class="btn btn-primary" type="button">Upload image</button>
+          <button id="brand-remove" class="btn btn-ghost" type="button">Remove</button>
+        </div>
+        <p id="brand-msg" class="muted"></p>
       </div>
       <div class="card">
         <h3>Integrations</h3>

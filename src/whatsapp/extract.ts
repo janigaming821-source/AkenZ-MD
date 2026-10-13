@@ -1,5 +1,5 @@
-import { downloadMediaMessage } from '@whiskeysockets/baileys';
-import type { WAMessage, WASocket } from '@whiskeysockets/baileys';
+import { downloadMediaMessage } from 'baileys';
+import type { WAMessage, WASocket } from 'baileys';
 import { logger } from '../lib/logger.js';
 
 export type MediaType = 'image' | 'video' | 'audio' | 'document' | 'sticker' | null;
