@@ -480,10 +480,13 @@ public). To put it on the Noaura domain instead:
 CLOUDFLARE_API_TOKEN=<token> node deploy-site-cloudflare.mjs
 ```
 
-That deploys `site/` to a Cloudflare Pages project called `whatsapp-bot` and creates
-the proxied `whatsapp.noaura.xyz` CNAME pointing at it. The token needs Pages:Edit
-and DNS:Edit for the `noaura.xyz` zone; no token exists on this machine today, which
-is the only thing standing between the site and that address.
+That deploys `site/` to a Cloudflare Pages project called `whatsapp-bot` and puts
+`whatsapp.noaura.xyz` on it. Creating the proxied CNAME is not enough on its own —
+Pages only serves hostnames attached to the project — so the script also calls
+`POST /pages/projects/whatsapp-bot/domains`, which creates the record and the TLS
+certificate. The token needs Zone:Read, DNS:Edit and Pages:Edit for the `noaura.xyz`
+zone; no token exists on this machine today, which is the only thing standing between
+the site and that address. Re-running the script is safe.
 
 ---
 
