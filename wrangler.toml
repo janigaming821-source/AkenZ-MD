@@ -1,0 +1,8 @@
+name = "whatsapp-bot"
+pages_build_output_dir = "site"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "akenz-shop"
+database_id = "5260bc46-0d56-41df-b245-a1b52648c332"

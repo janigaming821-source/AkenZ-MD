@@ -68,11 +68,11 @@ if (!reduceMotion && 'IntersectionObserver' in window) {
 }
 
 // ── pricing buttons pre-fill the order form ────────────────────────────────
+const PRICES = { '1 Month': 'Rs 120', '1 Year': 'Rs 800', Lifetime: 'Rs 1000' };
 const planSelect = $('#order-form select[name="plan"]');
 const payAmount = $('#pay-amount');
 const syncAmount = () => {
-  const [, price] = planSelect.value.split('—');
-  payAmount.textContent = (price ?? '').trim() || '—';
+  payAmount.textContent = PRICES[planSelect.value] ?? '—';
 };
 planSelect.addEventListener('change', syncAmount);
 document.querySelectorAll('[data-plan]').forEach((btn) => {
@@ -85,28 +85,59 @@ document.querySelectorAll('[data-plan]').forEach((btn) => {
 syncAmount();
 
 // ── the order ──────────────────────────────────────────────────────────────
-$('#order-form').addEventListener('submit', (e) => {
+$('#order-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const button = e.target.querySelector('button[type="submit"]');
   const data = Object.fromEntries(new FormData(e.target).entries());
   const name = (data.name ?? '').trim();
-  const rawPhone = (data.phone ?? '').replace(/[^\d+]/g, '');
+  const phone = (data.phone ?? '').trim();
+  const ezNumber = (data.ez_number ?? '').trim();
+  const txnId = (data.txn_id ?? '').trim();
   if (name.length < 2) { toast('Please write your name.'); return; }
-  if (rawPhone.replace(/\D/g, '').length < 9) { toast('That WhatsApp number looks too short.'); return; }
+  if (phone.replace(/\D/g, '').length < 9) { toast('That WhatsApp number looks too short.'); return; }
+  if (ezNumber.replace(/\D/g, '').length < 9) { toast('Enter the EZ Cash number you paid from.'); return; }
+  if (txnId.length < 4) { toast('Enter the transaction ID from the EZ Cash confirmation.'); return; }
 
-  const lines = [
-    '*New AkenZ MD order*',
-    `Name: ${name}`,
-    `WhatsApp: ${data.phone.trim()}`,
-    `Plan: ${data.plan}`,
-    `Bot name: ${(data.botname ?? '').trim() || 'you choose'}`,
-    `Prefix: ${(data.prefix ?? '.').trim()}`,
-  ];
-  const notes = (data.notes ?? '').trim();
-  if (notes) lines.push(`Notes: ${notes}`);
-  lines.push('', 'I will pay by EZ Cash and send the transaction ID here.');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  const post = (payload) =>
+    fetch('/api/order', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // The form labels are English, so the buyer sees the server's English
+      // error untouched — no translation layer to keep in sync here.
+      body: JSON.stringify({ ...payload, plan: data.plan }),
+    }).then(async (res) => ({ status: res.status, body: await res.json().catch(() => ({})) }));
 
-  window.open(waHref(lines.join('\n')), '_blank', 'noopener');
-  toast('WhatsApp is opening — press send there.');
+  const { status, body } = await post({
+    name,
+    phone,
+    bot_name: (data.bot_name ?? '').trim(),
+    prefix: data.prefix ?? '.',
+    ez_number: ezNumber,
+    txn_id: txnId,
+    notes: (data.notes ?? '').trim(),
+  }).catch(() => ({ status: 0, body: {} }));
+  button.disabled = false;
+  button.textContent = 'Place my order';
+
+  if (!status || status >= 400) {
+    toast(body.error ?? 'Could not send the order — message the owner on WhatsApp.');
+    return;
+  }
+
+  const id = body.order_id;
+  toast(`Order #${id} received — the owner will confirm your payment.`);
+
+  // Opening WhatsApp by itself would be a popup the buyer did not ask for, so it
+  // is offered as a link next to the order number.
+  const done = $('#order-done');
+  done.querySelector('strong').textContent = `#${id}`;
+  done.querySelector('a').href = waHref(
+    [`*AkenZ MD order #${id}*`, `Name: ${name}`, `WhatsApp: ${phone}`, `Plan: ${data.plan}`, `EZ Cash: ${ezNumber}`, `Transaction ID: ${txnId}`].join('\n')
+  );
+  done.classList.remove('hidden');
+  done.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
 });
 
 $('#copy-ez').addEventListener('click', async () => {

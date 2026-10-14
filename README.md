@@ -467,11 +467,11 @@ merges are slower than on the local PC.
 
 ## Selling it: the site in `site/`
 
-`site/` is a static one-page shop for the bot (no build step, no framework, no
-server code): plans at **Rs 120 / month, Rs 800 / year, Rs 1000 lifetime**, an order
-form that only builds a pre-filled `wa.me` message to **077 604 1953**, and the EZ
-Cash instructions. It submits nothing to any server, so there is nothing to host
-behind the form.
+`site/` is the shop for the bot: plans at **Rs 120 / month, Rs 800 / year, Rs 1000
+lifetime**, an order form that captures the EZ Cash number and transaction
+reference, the owner's console at `/admin`, and the buyer portal at `/account`.
+The pages are static; the backend is Cloudflare Pages Functions in `functions/`
+writing to the D1 database `akenz-shop` (schema in `shop/schema.sql`).
 
 It is live at **`https://whatsappbot.noaura.xyz`** (Cloudflare Pages, plus a mirror
 at `https://akenz-md-bot-5356tjkclo8.qoder.website`). To republish after editing
@@ -493,6 +493,39 @@ dashboard performs the same action happily. So the very first hostname needs the
 dashboard click — Pages → `whatsapp-bot` → Custom domains → Set up a custom domain
 → Activate domain — and the script only prints that reminder. Once attached, DNS,
 TLS and redeploys are all API-driven, and the script reports the status of each.
+
+### From order to a running bot
+
+1. **Buyer orders** — `POST /api/order` stores name, WhatsApp number, plan, EZ Cash
+   number and transaction reference in D1 as `pending`. Five orders per hour from one
+   IP is the limit; nothing is charged at this step.
+2. **Owner approves** — `/admin` (password `ADMIN_PASSWORD`) lists orders with the
+   payment details. Approving creates the customer, generates a readable password,
+   stores only its PBKDF2 hash, and shows the welcome message once so it can be
+   pasted into WhatsApp. The buyer's login **is their WhatsApp number**.
+3. **Buyer signs in** — `/account` → `POST /api/login`, then `GET /api/me`. Eight
+   wrong tries lock the number out for 15 minutes.
+4. **Buyer links and customises** — the portal calls `/api/bot/<action>`, a proxy in
+   `functions/_proxy.js` that forwards to that customer's `bot_url` with their
+   `bot_key` as `x-api-key`. Only six actions are reachable: status, pair, qr,
+   reconnect, settings and logo. Until the owner fills in `bot_url` and `bot_key`
+   the portal says the bot is not linked yet — an unlinked buyer can do nothing.
+
+On the bot side the same key is `BUYER_API_KEY` (`src/web/auth.ts` → `apiGuard`), and
+it unlocks exactly those six routes; logs, groups, commands and logout stay behind the
+session cookie. Leave `BUYER_API_KEY` empty and the header path is closed entirely.
+
+Set the shop secrets with wrangler (values are in the gitignored
+`.shop-secrets.json` on the machine that created them):
+
+```bash
+npx wrangler pages secret put ADMIN_PASSWORD --project-name whatsapp-bot
+npx wrangler pages secret put COOKIE_SECRET --project-name whatsapp-bot
+```
+
+`COOKIE_SECRET` signs the session cookies, so changing it logs everyone out. Applying a
+schema change: `npx wrangler d1 execute akenz-shop --remote --file=shop/schema.sql`
+(plus the dated files in `shop/migrations/`).
 
 ---
 

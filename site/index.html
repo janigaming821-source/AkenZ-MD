@@ -28,7 +28,9 @@
       <a href="#how">How it works</a>
       <a href="#pricing">Pricing</a>
       <a href="#order">Order</a>
+      <a href="#order">Order</a>
       <a href="#faq">FAQ</a>
+      <a href="/account">My bot</a>
     </nav>
     <a class="btn btn-primary btn-nav" href="#order">💎 Get your bot</a>
     <button class="burger" id="burger" aria-label="Menu" type="button">☰</button>
@@ -181,25 +183,25 @@
       <ol class="steps">
         <li>
           <b>1 · Pick a plan and order</b>
-          <p>Fill the order form below. It opens WhatsApp with your details already typed, so you
-            only press send.</p>
+          <p>Fill the order form below with your EZ Cash number and transaction ID. It goes straight
+            to the owner — no chat needed to start.</p>
         </li>
         <li>
-          <b>2 · Pay by EZ Cash</b>
-          <p>LKR 077&nbsp;604&nbsp;1953 (Noaura). Send the transaction ID in the same chat — that ID is
-            what activates your bot.</p>
+          <b>2 · Payment is confirmed</b>
+          <p>LKR 077&nbsp;604&nbsp;1953 (Noaura). As soon as that EZ Cash reference checks out, the order
+            is approved and your login is created — your WhatsApp number is the username.</p>
         </li>
         <li>
           <b>3 · Link your number</b>
-          <p>We sit together on a call or in a chat, you scan one QR code with
-            WhatsApp → Settings → Linked devices, and the bot attaches to your number. Takes about
-            two minutes. Your chats stay on your phone; the bot only sees what is sent to it.</p>
+          <p>Sign in and press <i>Show pairing code</i>. WhatsApp → Settings → Linked devices →
+            Link with phone number, type the code, done. Takes about two minutes, and the bot only
+            sees what is sent to it.</p>
         </li>
         <li>
           <b>4 · Brand it and use it</b>
-          <p>Tell us the bot name, picture and prefix you want, or set them yourself with
-            <code>.setname</code>, <code>.setpp</code> and <code>.setprefix</code>. From then on it stays awake
-            on the server — your phone can be off, switched off at night, at work, it does not matter.</p>
+          <p>Bot name, command prefix, language, menu image, replies — all of it is yours to change
+            from the same login, any time. From then on it stays awake on the server — your phone can
+            be off, switched off at night, at work, it does not matter.</p>
         </li>
       </ol>
     </div>
@@ -257,8 +259,8 @@
     <div class="wrap order-grid">
       <div>
         <h2>Order your bot</h2>
-        <p class="sub">Fill this in and press the button — it opens WhatsApp with your order typed
-          out. Then pay by EZ Cash and send the transaction ID.</p>
+        <p class="sub">Fill this in and press the button — the order goes straight to the owner with
+          your EZ Cash details. You get a reply with your login as soon as the payment is confirmed.</p>
         <form id="order-form" novalidate>
           <label>Your name
             <input name="name" maxlength="40" placeholder="e.g. Sanjay" required />
@@ -268,14 +270,14 @@
           </label>
           <label>Plan
             <select name="plan">
-              <option value="1 Month — Rs 120">1 Month — Rs 120</option>
-              <option value="1 Year — Rs 800" selected>1 Year — Rs 800</option>
-              <option value="Lifetime — Rs 1000">Lifetime — Rs 1000</option>
+              <option value="1 Month">1 Month — Rs 120</option>
+              <option value="1 Year" selected>1 Year — Rs 800</option>
+              <option value="Lifetime">Lifetime — Rs 1000</option>
             </select>
           </label>
           <div class="two">
             <label>Bot name you want
-              <input name="botname" maxlength="24" placeholder="e.g. Sanjay MD" />
+              <input name="bot_name" maxlength="24" placeholder="e.g. Sanjay MD" />
             </label>
             <label>Prefix
               <select name="prefix">
@@ -285,14 +287,30 @@
               </select>
             </label>
           </div>
+          <div class="two">
+            <label>Your EZ Cash number
+              <input name="ez_number" maxlength="20" placeholder="0771234567" required inputmode="tel" />
+            </label>
+            <label>Transaction ID
+              <input name="txn_id" maxlength="30" placeholder="e.g. 8412 930551" required inputmode="numeric" />
+            </label>
+          </div>
           <label>Anything else? (group type, language, custom reply lines)
             <textarea name="notes" rows="3" maxlength="300" placeholder="Mostly a Free Fire group, Sinhala first…"></textarea>
           </label>
           <div class="form-actions">
-            <button class="btn btn-primary" type="submit">Send the order on WhatsApp</button>
+            <button class="btn btn-primary" type="submit">Place my order</button>
             <button class="btn btn-ghost" type="button" id="copy-ez">Copy EZ Cash number</button>
           </div>
-          <p class="tiny">This form sends nothing to a server. It only builds a WhatsApp message for you.</p>
+          <p class="tiny">Pay <strong id="pay-amount">Rs 800</strong> to EZ Cash <span id="ez-inline">077 604 1953</span>,
+            then put the transaction ID above. Nothing is charged here.</p>
+          <div id="order-done" class="order-done hidden">
+            <p>Order <strong>#0</strong> is with the owner. Press send below so the payment matches up
+              in the same chat:</p>
+            <a class="btn btn-primary" target="_blank" rel="noopener" href="#">Send my payment details on WhatsApp</a>
+            <p class="tiny">Once it is approved you get a login on this number.
+              <a href="/account">Check your order status</a>.</p>
+          </div>
         </form>
       </div>
       <aside class="pay-card">

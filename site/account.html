@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>My bot · AkenZ MD</title>
+<meta name="robots" content="noindex" />
+<link rel="icon" href="/favicon.png" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body class="portal">
+<header id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <img src="/logo.png" alt="AkenZ MD" class="logo" />
+      <span>AkenZ&nbsp;MD</span>
+    </a>
+    <nav class="links">
+      <a href="/#features">What it does</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#order">Order</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap portal-main">
+  <section id="signin" class="panel">
+    <h1>Sign in to your bot</h1>
+    <p class="sub">Your WhatsApp number is the username. The password is the one the owner sent you
+      when the payment was confirmed.</p>
+    <form id="login-form" class="grid-two" novalidate>
+      <label>WhatsApp number
+        <input name="phone" maxlength="20" placeholder="0771234567" required inputmode="tel" />
+      </label>
+      <label>Password
+        <input name="password" type="password" maxlength="40" required />
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Open my bot</button>
+      </div>
+    </form>
+  </section>
+
+  <div id="dashboard" class="hidden">
+    <section class="panel">
+      <h1 id="hello">Your bot</h1>
+      <p class="sub" id="plan-line">—</p>
+      <div class="chips">
+        <span class="chip" id="state-chip">checking…</span>
+        <button class="chip ghost" type="button" id="signout">Sign out</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>1 · Link your number</h2>
+      <p class="sub">WhatsApp on your phone → Settings → Linked devices → <i>Link with phone number</i>.
+        Type the number below, then the code the bot hands back.</p>
+      <div class="grid-two">
+        <label>Your number for the pairing
+          <input id="pair-phone" maxlength="20" placeholder="0771234567" inputmode="tel" />
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="button" id="ask-code">Show pairing code</button>
+          <button class="btn btn-ghost" type="button" id="ask-qr">Show QR instead</button>
+        </div>
+      </div>
+      <div id="pair-result" class="result hidden">
+        <p class="code" id="pair-code"></p>
+        <img id="pair-qr" alt="Pairing QR code" class="qr hidden" />
+        <p class="tiny" id="pair-note"></p>
+      </div>
+      <p class="tiny">Codes expire after about a minute and each new one replaces the last — that is
+        WhatsApp's rule, not ours.</p>
+    </section>
+
+    <section class="panel">
+      <h2>2 · Name, prefix and look</h2>
+      <form id="settings-form" class="grid-two" novalidate>
+        <label>Bot name
+          <input name="name" maxlength="40" placeholder="Sanjay MD" />
+        </label>
+        <label>Command prefix
+          <select name="prefix">
+            <option value=".">. (dot)</option>
+            <option value="!">! (bang)</option>
+            <option value="#"># (hash)</option>
+            <option value="/">/ (slash)</option>
+          </select>
+        </label>
+        <label>Language
+          <select name="language">
+            <option value="si">Sinhala</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <label>Status line under the menu
+          <input name="statusText" maxlength="80" placeholder="Powered by AkenZ MD" />
+        </label>
+        <fieldset class="toggles">
+          <legend>Switches</legend>
+          <label><input type="checkbox" name="aiEnabled" /> AI replies</label>
+          <label><input type="checkbox" name="autoReplyEnabled" /> Auto-reply</label>
+          <label><input type="checkbox" name="welcomeEnabled" /> Welcome new members</label>
+          <label><input type="checkbox" name="goodbyeEnabled" /> Goodbye messages</label>
+          <label><input type="checkbox" name="mediaEnabled" /> Music and video</label>
+          <label><input type="checkbox" name="groupToolsEnabled" /> Group tools</label>
+        </fieldset>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>3 · Menu image</h2>
+      <p class="sub">The picture at the top of <code>.menu</code>. JPEG or PNG, up to 3 MB.</p>
+      <div class="form-actions">
+        <input type="file" id="logo-file" accept="image/jpeg,image/png" />
+        <button class="btn btn-ghost" type="button" id="logo-clear">Remove image</button>
+      </div>
+      <img id="logo-preview" alt="Current menu image" class="preview hidden" />
+    </section>
+
+    <section class="panel">
+      <h2>4 · Password</h2>
+      <form id="password-form" class="grid-two" novalidate>
+        <label>Current password
+          <input name="current" type="password" maxlength="40" required />
+        </label>
+        <label>New password (at least 8 characters)
+          <input name="next" type="password" maxlength="40" required />
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="submit">Change password</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/account.js"></script>
+</body>
+</html>

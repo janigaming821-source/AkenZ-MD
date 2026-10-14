@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orders · AkenZ MD</title>
+<meta name="robots" content="noindex" />
+<link rel="icon" href="/favicon.png" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body class="portal">
+<header id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <img src="/logo.png" alt="AkenZ MD" class="logo" />
+      <span>AkenZ&nbsp;MD</span>
+    </a>
+    <nav class="links">
+      <a href="/#order">Site</a>
+      <a href="/account">My bot</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap portal-main">
+  <section id="signin" class="panel">
+    <h1>Owner console</h1>
+    <p class="sub">Orders arrive here the moment someone pays. Approving one creates the buyer's login.</p>
+    <form id="login-form" novalidate>
+      <label>Password
+        <input name="password" type="password" maxlength="60" required />
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Open the console</button>
+      </div>
+    </form>
+  </section>
+
+  <div id="console" class="hidden">
+    <section class="panel">
+      <div class="chips">
+        <button class="chip" type="button" data-status="pending">Pending <span id="n-pending">0</span></button>
+        <button class="chip ghost" type="button" data-status="approved">Approved</button>
+        <button class="chip ghost" type="button" data-status="rejected">Rejected</button>
+        <button class="chip ghost" type="button" data-status="all">All</button>
+        <button class="chip ghost" type="button" id="signout">Sign out</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Orders</h2>
+      <div id="orders" class="order-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Customers</h2>
+      <div id="customers" class="order-list"></div>
+    </section>
+  </div>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/admin.js"></script>
+</body>
+</html>
