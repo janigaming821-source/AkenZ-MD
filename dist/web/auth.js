@@ -94,5 +94,41 @@ export function csrfProtection(req, res, next) {
     }
     next();
 }
+/**
+ * Paths the shop site may drive on a buyer's behalf: link the number, watch the
+ * connection, set branding. Anything owner-wide (logs, groups, commands, logout)
+ * stays behind the session, and the key never unlocks those.
+ */
+const BUYER_PATHS = new Set([
+    '/api/whatsapp/status',
+    '/api/whatsapp/pair',
+    '/api/whatsapp/qr',
+    '/api/whatsapp/reconnect',
+    '/api/settings',
+    '/api/settings/logo',
+]);
+const viaBuyerKey = (req) => {
+    const provided = req.get('x-api-key') ?? '';
+    if (!provided || !config.dashboard.buyerApiKey)
+        return false;
+    // originalUrl, because inside app.use('/api', …) the request path has already
+    // had the mount point stripped and would not match the set.
+    if (!BUYER_PATHS.has(req.originalUrl.split('?')[0] ?? ''))
+        return false;
+    return safeEqual(provided, config.dashboard.buyerApiKey);
+};
+/**
+ * Session cookie for the dashboard, or the shop's key for the handful of routes
+ * a buyer needs from the site. The key replaces CSRF as well: it cannot be
+ * attached by a cross-site form, so a browser has no way to send it.
+ */
+export function apiGuard(req, res, next) {
+    if (viaBuyerKey(req)) {
+        res.setHeader('cache-control', 'no-store');
+        next();
+        return;
+    }
+    requireAuth(req, res, () => csrfProtection(req, res, next));
+}
 export const loginUsernameMatches = (given) => safeEqual(given, config.dashboard.username);
 //# sourceMappingURL=auth.js.map

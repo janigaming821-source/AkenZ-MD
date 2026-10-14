@@ -20,6 +20,7 @@ import { aiIsConfigured } from '../tools/api.js';
 import { toolVersion } from '../media/binary.js';
 import { logger } from '../lib/logger.js';
 import {
+  apiGuard,
   csrfProtection,
   loginUsernameMatches,
   requireAuth,
@@ -94,7 +95,7 @@ app.post('/api/logout', (req, res) => {
   });
 });
 
-app.use('/api', requireAuth, csrfProtection);
+app.use('/api', apiGuard);
 
 app.get('/api/csrf', (req: Request, res: Response) => {
   const sess = req.session as { csrf?: string };

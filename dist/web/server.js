@@ -19,7 +19,7 @@ import { botStartedAt } from '../commands/general.js';
 import { aiIsConfigured } from '../tools/api.js';
 import { toolVersion } from '../media/binary.js';
 import { logger } from '../lib/logger.js';
-import { csrfProtection, loginUsernameMatches, requireAuth, sessionMiddleware, verifyPassword, tooManyAttempts, registerFailedAttempt, clearAttempts, } from './auth.js';
+import { apiGuard, loginUsernameMatches, requireAuth, sessionMiddleware, verifyPassword, tooManyAttempts, registerFailedAttempt, clearAttempts, } from './auth.js';
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet({
@@ -77,7 +77,7 @@ app.post('/api/logout', (req, res) => {
         res.json({ ok: true });
     });
 });
-app.use('/api', requireAuth, csrfProtection);
+app.use('/api', apiGuard);
 app.get('/api/csrf', (req, res) => {
     const sess = req.session;
     res.json({ token: sess.csrf ?? null });
