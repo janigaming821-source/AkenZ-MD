@@ -40,7 +40,7 @@ const cloud = {
   // Generate runs at boot, not only on install: npm skips a project's postinstall
   // when the dependency tree is unchanged, which left the client built from the
   // previous schema and every new column unknown at runtime.
-  scripts: { start: 'prisma generate --quiet && node dist/index.js', postinstall: 'prisma generate' },
+  scripts: { start: 'prisma generate && node dist/index.js', postinstall: 'prisma generate' },
   prisma: local.prisma,
   dependencies: deps,
 };

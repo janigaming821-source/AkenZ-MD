@@ -42,3 +42,4 @@ watch-domain.mjs
 shop-test.mjs
 .shop-secrets.json
 shop-trigger.mjs
+shop-set-bot-key.mjs
