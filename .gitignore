@@ -32,3 +32,10 @@ test-brand.mjs
 test-cmd-guard.mjs
 serve-dashboard.mjs
 push-logo.mjs
+.cloudflare-token
+probe-zone.mjs
+probe-pages-api.mjs
+probe-pages-domains.mjs
+probe-dns-add.mjs
+probe-bonto-api.mjs
+watch-domain.mjs

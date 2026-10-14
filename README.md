@@ -473,20 +473,26 @@ form that only builds a pre-filled `wa.me` message to **077 604 1953**, and the 
 Cash instructions. It submits nothing to any server, so there is nothing to host
 behind the form.
 
-It is published at `https://akenz-md-bot-5356tjkclo8.qoder.website` (Qoder Sites,
-public). To put it on the Noaura domain instead:
+It is live at **`https://whatsappbot.noaura.xyz`** (Cloudflare Pages, plus a mirror
+at `https://akenz-md-bot-5356tjkclo8.qoder.website`). To republish after editing
+`site/`:
 
 ```bash
-CLOUDFLARE_API_TOKEN=<token> node deploy-site-cloudflare.mjs
+node deploy-site-cloudflare.mjs
 ```
 
-That deploys `site/` to a Cloudflare Pages project called `whatsapp-bot` and puts
-`whatsapp.noaura.xyz` on it. Creating the proxied CNAME is not enough on its own —
-Pages only serves hostnames attached to the project — so the script also calls
-`POST /pages/projects/whatsapp-bot/domains`, which creates the record and the TLS
-certificate. The token needs Zone:Read, DNS:Edit and Pages:Edit for the `noaura.xyz`
-zone; no token exists on this machine today, which is the only thing standing between
-the site and that address. Re-running the script is safe.
+The script reads the API token from the gitignored `.cloudflare-token` file (a
+scoped token needs Zone:Read, DNS:Edit and Pages:Edit for `noaura.xyz`), uploads
+`site/` to the Pages project `whatsapp-bot`, ensures the proxied CNAME exists, and
+then polls the URL until it answers. Re-running it is safe.
+
+One caveat learned the hard way: the Pages domain-attach call
+(`POST /pages/projects/whatsapp-bot/domains`) is refused for this account with
+"contains an invalid TLD" (code 8000015) for *any* hostname, even though the
+dashboard performs the same action happily. So the very first hostname needs the
+dashboard click — Pages → `whatsapp-bot` → Custom domains → Set up a custom domain
+→ Activate domain — and the script only prints that reminder. Once attached, DNS,
+TLS and redeploys are all API-driven, and the script reports the status of each.
 
 ---
 
