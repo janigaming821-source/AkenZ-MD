@@ -19,7 +19,10 @@ export const forward = (name) =>
   route(async (request, env) => {
     const customer = await requireCustomer(request, env);
     if (!customer.bot_url || !customer.bot_key) {
-      throw Object.assign(new Error('Your bot is not linked yet. The owner will message you when it is ready.'), { status: 503 });
+      // Every approved order gets a bot automatically, so this only means the
+      // account predates that or the call failed — the owner can re-create it
+      // from the console without touching the buyer's login.
+      throw Object.assign(new Error('Your bot is not ready yet. Contact the seller to re-create it.'), { status: 503 });
     }
 
     const target = TARGETS[name];

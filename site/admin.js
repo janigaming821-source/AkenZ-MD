@@ -167,10 +167,28 @@ async function loadCustomers() {
     ...data.customers.map((c) => {
       const el = document.createElement('article');
       el.className = 'order-card';
+      const linked = c.bot_url && c.instance_id;
       el.innerHTML = `
         <header><b>${esc(c.name)}</b> <span class="chip ${esc(c.status)}">${esc(c.plan)}</span></header>
         <p>${esc(c.phone)} · until ${esc(c.expires_at ?? '').slice(0, 10)} · ${esc(c.orders_approved)} order(s)</p>
-        <p class="tiny">instance ${esc(c.instance_id)} · ${c.bot_url ? 'bot linked' : 'no bot linked'}</p>`;
+        <p class="tiny">${linked ? `bot ready · instance ${esc(c.instance_id)}` : 'no bot yet'}</p>`;
+      if (!linked) {
+        const fix = document.createElement('button');
+        fix.className = 'btn btn-primary';
+        fix.textContent = 'Create their bot';
+        fix.addEventListener('click', async () => {
+          fix.disabled = true;
+          try {
+            const made = await call('/api/admin/provision', post({ customer_id: c.id }));
+            toast(`Bot ready — instance ${made.instance_id}.`);
+            await loadCustomers();
+          } catch (error) {
+            toast(error.message);
+            fix.disabled = false;
+          }
+        });
+        el.append(fix);
+      }
       return el;
     })
   );

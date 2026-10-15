@@ -71,12 +71,18 @@ const chip = $('#state-chip');
 
 async function loadStatus() {
   if (!me.bot_url) {
-    chip.textContent = 'waiting for the owner to link your bot';
+    chip.textContent = 'your bot is still being set up — refresh in a minute';
     chip.classList.add('warn');
     return;
   }
-  const state = await bot('status').catch(() => null);
-  if (!state) return;
+  let state = null;
+  try {
+    state = await call('/api/bot/status');
+  } catch (error) {
+    chip.textContent = error.message;
+    chip.classList.add('warn');
+    return;
+  }
   chip.textContent = state.connected ? `connected as ${state.phoneNumber ?? 'your number'}` : state.label ?? state.status;
   chip.classList.toggle('warn', !state.connected);
   if (state.pairingCode) renderCode(state.pairingCode, state.pairingCodeExpiresAt);

@@ -179,3 +179,48 @@ export const normalizePhone = (raw) => {
   const digits = String(raw ?? '').replace(/[^\d]/g, '').replace(/^00/, '').replace(/^0/, '94');
   return digits.length >= 9 && digits.length <= 15 ? digits : null;
 };
+
+/** The bot server, and the key that lets this site create and remove bots. */
+export const botBase = (env) => String(env.BOT_URL ?? '').replace(/\/+$/, '');
+
+const botKey = (env) => String(env.BOT_PROVISION_KEY ?? '');
+
+/**
+ * Asks the bot server for a bot. The key it returns is the buyer's own API key:
+ * it scopes every later /api/bot/* call from the portal to that one bot, and the
+ * browser never sees it.
+ */
+export async function provisionBot(env, { label, ownerNumber, plan, days }) {
+  const base = botBase(env);
+  const key = botKey(env);
+  if (!base || !key) throw new Error('The bot server is not configured (BOT_URL / BOT_PROVISION_KEY).');
+  const res = await fetch(`${base}/api/instances`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-provision-key': key },
+    body: JSON.stringify({
+      label,
+      ownerNumber,
+      plan,
+      expiresAt: new Date(Date.now() + days * 86_400_000).toISOString(),
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`The bot server refused to create a bot (${res.status}): ${text.slice(0, 120)}`);
+  const created = JSON.parse(text);
+  if (!created?.apiKey) throw new Error('The bot server did not return a key.');
+  return { instance: String(created.instance), key: created.apiKey, url: base };
+}
+
+/** Extends a returning buyer's existing bot instead of forking a second one. */
+export async function extendBot(env, instance, days) {
+  const base = botBase(env);
+  const key = botKey(env);
+  if (!base || !key || !instance) return null;
+  const res = await fetch(`${base}/api/instances/${encodeURIComponent(instance)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', 'x-provision-key': key },
+    body: JSON.stringify({ expiresAt: new Date(Date.now() + days * 86_400_000).toISOString() }),
+  }).catch(() => null);
+  return res?.ok ? res : null;
+}
+

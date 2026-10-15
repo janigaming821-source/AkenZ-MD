@@ -1,4 +1,4 @@
-import { generatePassword, hashPassword, json, normalizePhone, PLANS, readBody, requireAdmin, route } from '../../_lib.js';
+import { botBase, extendBot, generatePassword, hashPassword, json, normalizePhone, PLANS, provisionBot, readBody, requireAdmin, route } from '../../_lib.js';
 
 const FIND_CUSTOMER = 'SELECT * FROM customers WHERE phone = ?';
 
@@ -14,43 +14,6 @@ const TOUCH_CUSTOMER = `
 `;
 
 const APPROVE = `UPDATE orders SET status = 'approved', handled_at = datetime('now'), customer_id = ? WHERE id = ? AND status != 'approved'`;
-
-/**
- * Asking the bot server for a bot. The key it returns is the buyer's own API
- * key: it scopes every later /api/bot/* call from the portal to that one bot.
- */
-async function provisionBot(env, { label, ownerNumber, plan, days }) {
-  const base = String(env.BOT_URL ?? '').replace(/\/$/, '');
-  const key = String(env.BOT_PROVISION_KEY ?? '');
-  if (!base || !key) throw new Error('The bot server is not configured (BOT_URL / BOT_PROVISION_KEY).');
-  const res = await fetch(`${base}/api/instances`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-provision-key': key },
-    body: JSON.stringify({
-      label,
-      ownerNumber,
-      plan,
-      expiresAt: new Date(Date.now() + days * 86_400_000).toISOString(),
-    }),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`The bot server refused to create a bot (${res.status}): ${text.slice(0, 120)}`);
-  const created = JSON.parse(text);
-  if (!created?.apiKey) throw new Error('The bot server did not return a key.');
-  return { instance: String(created.instance), key: created.apiKey, url: base };
-}
-
-/** Extends a returning buyer's existing bot instead of forking a second one. */
-async function extendBot(env, instance, days) {
-  const base = String(env.BOT_URL ?? '').replace(/\/$/, '');
-  const key = String(env.BOT_PROVISION_KEY ?? '');
-  if (!base || !key || !instance) return;
-  await fetch(`${base}/api/instances/${encodeURIComponent(instance)}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json', 'x-provision-key': key },
-    body: JSON.stringify({ expiresAt: new Date(Date.now() + days * 86_400_000).toISOString() }),
-  }).catch(() => {});
-}
 
 /**
  * Approving an order is what creates the account: the password is generated
@@ -75,21 +38,28 @@ export const onRequestPost = route(async (request, env) => {
   const salt = crypto.randomUUID().replace(/-/g, '').slice(0, 32);
   const hash = await hashPassword(password, salt);
 
-  const instanceId = String(body.instance_id ?? '').trim() || `c${phone}`;
-  const botUrl = String(body.bot_url ?? '').trim() || env.BOT_URL || '';
-  const botKey = String(body.bot_key ?? '').trim() || env.BOT_KEY || '';
-
   const existing = await env.DB.prepare(FIND_CUSTOMER).bind(phone).first();
-  // A returning buyer keeps the bot and key they already linked their phone to.
-  let instance = existing?.instance_id ?? instanceId;
-  let key = existing?.bot_key ?? botKey;
-  if (existing?.instance_id && existing?.bot_key && /^\d+$/.test(existing.instance_id)) {
-    await extendBot(env, existing.instance_id, PLANS[plan].days);
+  // A returning buyer keeps the bot and key their phone is already linked to. A
+  // row without a real numeric instance (one predating provisioning, or a failed
+  // call) is created afresh rather than trusted.
+  const reusable = existing?.bot_key && /^\d+$/.test(String(existing.instance_id ?? ''));
+  let instance;
+  let key;
+  if (reusable) {
+    instance = existing.instance_id;
+    key = existing.bot_key;
+    await extendBot(env, instance, PLANS[plan].days);
   } else {
-    const made = await provisionBot(env, { label: `${order.name} — ${phone}`, ownerNumber: phone, plan, days: PLANS[plan].days });
+    const made = await provisionBot(env, {
+      label: `${order.name} — ${phone}`,
+      ownerNumber: phone,
+      plan,
+      days: PLANS[plan].days,
+    });
     instance = made.instance;
     key = made.key;
   }
+  const botUrl = botBase(env);
 
   if (existing) {
     await env.DB.prepare(TOUCH_CUSTOMER)
