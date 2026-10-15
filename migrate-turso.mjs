@@ -43,11 +43,19 @@ if (!url?.startsWith('libsql://')) {
 }
 
 // Statement splitting is safe for schema SQL of this shape: no strings contain a
-// semicolon, and each statement stands on its own.
+// semicolon, and each statement stands on its own. Comment lines are dropped
+// per-statement first: a chunk that merely starts with a comment used to be
+// filtered out whole, silently skipping the statement the comment described.
 const statements = sql
   .split(';')
-  .map((s) => s.trim())
-  .filter((s) => s && !s.startsWith('--'));
+  .map((s) =>
+    s
+      .split('\n')
+      .filter((line) => line.trim() && !line.trim().startsWith('--'))
+      .join('\n')
+      .trim(),
+  )
+  .filter(Boolean);
 
 const client = createClient({ url, authToken });
 const applied = [];

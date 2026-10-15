@@ -4,6 +4,8 @@ import type { NextFunction, Request, Response } from 'express';
 import session from 'express-session';
 import { config } from '../config/env.js';
 import { getConfig, updateConfig } from '../db/config.js';
+import { OWNER_INSTANCE, runInInstance } from '../lib/scope.js';
+import { instanceForKey } from '../whatsapp/instances.js';
 
 export const PASSWORD_ATTEMPTS_WINDOW_MS = 5 * 60_000;
 export const PASSWORD_ATTEMPTS_MAX = 8;
@@ -121,27 +123,55 @@ const BUYER_PATHS = new Set([
   '/api/settings/logo',
 ]);
 
-const viaBuyerKey = (req: Request): boolean => {
+/** Instance the shop's key unlocks for this request, or null. */
+async function viaBuyerKey(req: Request): Promise<number | null> {
   const provided = req.get('x-api-key') ?? '';
-  if (!provided || !config.dashboard.buyerApiKey) return false;
+  if (!provided) return null;
   // originalUrl, because inside app.use('/api', …) the request path has already
   // had the mount point stripped and would not match the set.
-  if (!BUYER_PATHS.has(req.originalUrl.split('?')[0] ?? '')) return false;
-  return safeEqual(provided, config.dashboard.buyerApiKey);
-};
+  if (!BUYER_PATHS.has(req.originalUrl.split('?')[0] ?? '')) return null;
+  if (config.dashboard.buyerApiKey && safeEqual(provided, config.dashboard.buyerApiKey)) return OWNER_INSTANCE;
+  return instanceForKey(provided);
+}
 
 /**
- * Session cookie for the dashboard, or the shop's key for the handful of routes
- * a buyer needs from the site. The key replaces CSRF as well: it cannot be
- * attached by a cross-site form, so a browser has no way to send it.
+ * Session cookie for the dashboard, or a shop key for the handful of routes a
+ * buyer needs from the site. The key replaces CSRF as well: it cannot be
+ * attached by a cross-site form, so a browser has no way to send it. Everything
+ * downstream runs scoped to the instance the key belongs to.
  */
 export function apiGuard(req: Request, res: Response, next: NextFunction): void {
-  if (viaBuyerKey(req)) {
-    res.setHeader('cache-control', 'no-store');
-    next();
+  if (req.originalUrl.startsWith('/api/instances')) {
+    provisionGuard(req, res, next);
     return;
   }
-  requireAuth(req, res, () => csrfProtection(req, res, next));
+  viaBuyerKey(req)
+    .then((instance) => {
+      if (instance === null) {
+        requireAuth(req, res, () => csrfProtection(req, res, next));
+        return;
+      }
+      res.setHeader('cache-control', 'no-store');
+      res.locals.instance = instance;
+      runInInstance(instance, next);
+    })
+    .catch(next);
+}
+
+/** Express body parsers can drop the async scope; this puts it back. */
+export function rescope(_req: Request, res: Response, next: NextFunction): void {
+  runInInstance(res.locals.instance ?? OWNER_INSTANCE, next);
+}
+
+/** Only the shop server holds this key; it creates and removes buyer bots. */
+function provisionGuard(req: Request, res: Response, next: NextFunction): void {
+  const provided = req.get('x-provision-key') ?? '';
+  if (!config.dashboard.provisionApiKey || !safeEqual(provided, config.dashboard.provisionApiKey)) {
+    res.status(401).json({ error: 'provision key required' });
+    return;
+  }
+  res.setHeader('cache-control', 'no-store');
+  next();
 }
 
 export const loginUsernameMatches = (given: string): boolean =>

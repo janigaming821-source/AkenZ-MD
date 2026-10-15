@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
-const state = {
+import { currentInstance } from '../lib/scope.js';
+const initialState = () => ({
     status: 'disconnected',
     selfJid: null,
     phoneNumber: null,
@@ -10,20 +11,41 @@ const state = {
     pairingCodeExpiresAt: null,
     pairingQr: null,
     reconnectAttempt: 0,
-};
+});
+/** Live connection state of one bot instance. */
 export class ConnectionStore extends EventEmitter {
+    state = initialState();
     get() {
-        return { ...state };
+        return { ...this.state };
     }
     patch(next) {
-        Object.assign(state, next);
+        Object.assign(this.state, next);
         this.emit('change', this.get());
     }
     get isConnected() {
-        return state.status === 'connected';
+        return this.state.status === 'connected';
     }
 }
-export const connection = new ConnectionStore();
+const stores = new Map();
+export function connectionFor(instance) {
+    let store = stores.get(instance);
+    if (!store) {
+        store = new ConnectionStore();
+        stores.set(instance, store);
+    }
+    return store;
+}
+export const forgetConnection = (instance) => {
+    stores.delete(instance);
+};
+/** The connection of whichever bot the current work belongs to. */
+export const connection = {
+    get: () => connectionFor(currentInstance()).get(),
+    patch: (next) => connectionFor(currentInstance()).patch(next),
+    get isConnected() {
+        return connectionFor(currentInstance()).isConnected;
+    },
+};
 export const statusLabel = {
     disconnected: '🔴 Disconnected',
     connecting: '🟡 Connecting…',

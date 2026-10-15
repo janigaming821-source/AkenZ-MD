@@ -12,7 +12,8 @@ import { pino } from 'pino';
 import { config } from '../config/env.js';
 import { botLog, logError, logInfo, logWarn } from '../db/botLog.js';
 import { EncryptedAuthState } from './auth-store.js';
-import { connection } from './state.js';
+import { connectionFor, forgetConnection, type ConnectionStore } from './state.js';
+import { currentInstance, OWNER_INSTANCE, runInInstance } from '../lib/scope.js';
 
 export interface InboundMessage {
   jid: string;
@@ -58,6 +59,8 @@ const PAIRING_SOCKET_HOLD_MS = 120_000;
 /** Gap between registration attempts while nobody has asked for a code yet. */
 const QR_WINDOW_RETRY_MS = 30_000;
 const MAX_RECONNECT_ATTEMPTS = 12;
+/** A buyer's unlinked bot stops offering QRs once nobody has looked for this long. */
+const BUYER_PAIRING_IDLE_MS = 10 * 60_000;
 const BACKOFF_CAP_MS = 60_000;
 
 /**
@@ -93,7 +96,27 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
  * bounded reconnects. QR is intentionally not used as the connect method.
  */
 export class WhatsAppClient {
+  readonly conn: ConnectionStore;
   private sock: WASocket | null = null;
+  /** Last time someone asked to see this bot's QR or code. */
+  private lastDemand = 0;
+
+  constructor(readonly instance: number) {
+    this.conn = connectionFor(instance);
+  }
+
+  /** Keeps an unlinked buyer bot offering QRs while its owner is looking. */
+  noteDemand(): void {
+    this.lastDemand = Date.now();
+  }
+
+  /** Opens a socket if none is running yet, e.g. when a buyer asks for a QR. */
+  async ensureStarted(): Promise<void> {
+    this.noteDemand();
+    // The owner's bot is started at boot and manages its own reconnects.
+    if (this.instance === OWNER_INSTANCE || this.sock || this.reconnectTimer || this.conn.isConnected) return;
+    await this.start();
+  }
   private auth: EncryptedAuthState | null = null;
   private authPromise: Promise<EncryptedAuthState> | null = null;
   private hooks: ClientHooks | null = null;
@@ -129,11 +152,11 @@ export class WhatsAppClient {
   }
 
   get isConnected(): boolean {
-    return connection.isConnected;
+    return this.conn.isConnected;
   }
 
   get selfJid(): string | null {
-    return connection.get().selfJid;
+    return this.conn.get().selfJid;
   }
 
   get waVersion(): [number, number, number] {
@@ -162,7 +185,7 @@ export class WhatsAppClient {
       // Loading the session touches storage (files locally, the remote database
       // in the cloud), so construction is awaited. The promise guard keeps two
       // racing connect() calls from building two independent caches.
-      if (!this.authPromise) this.authPromise = EncryptedAuthState.create();
+      if (!this.authPromise) this.authPromise = EncryptedAuthState.create(this.instance);
       this.auth = await this.authPromise;
     }
     await this.auth.resetUnpairedIdentity();
@@ -185,11 +208,11 @@ export class WhatsAppClient {
     // code would leave the owner typing digits WhatsApp has already forgotten.
     if (!this.auth.hasPairedSession) {
       this.clearPairingTimer();
-      connection.patch({ pairingCode: null, pairingCodeExpiresAt: null });
+      this.conn.patch({ pairingCode: null, pairingCodeExpiresAt: null });
     }
 
-    connection.patch({
-      status: connection.get().status === 'connected' ? 'connecting' : connection.get().status,
+    this.conn.patch({
+      status: this.conn.get().status === 'connected' ? 'connecting' : this.conn.get().status,
     });
 
     const childLogger = pino({ level: config.logLevel === 'silent' ? 'fatal' : config.logLevel });
@@ -232,16 +255,22 @@ export class WhatsAppClient {
   }
 
   private bindEvents(sock: WASocket): void {
+    // Baileys emits from its own socket callbacks; pin them to this bot.
+    const on = sock.ev.on.bind(sock.ev) as (event: string, fn: (arg: never) => void) => void;
+    const ev = {
+      on: (event: string, fn: (arg: never) => void) =>
+        on(event, (arg: never) => runInInstance(this.instance, () => fn(arg))),
+    } as unknown as WASocket['ev'];
     const gen = this.generation;
     /** Ignore anything a superseded socket says after it has been replaced. */
     const current = () => gen === this.generation;
 
-    sock.ev.on('connection.update', (update) => {
+    ev.on('connection.update', (update) => {
       if (!current()) return;
       void this.handleConnectionUpdate(update);
     });
 
-    sock.ev.on('creds.update', () => {
+    ev.on('creds.update', () => {
       if (!current()) return;
       void (async () => {
         try {
@@ -255,7 +284,7 @@ export class WhatsAppClient {
       })();
     });
 
-    sock.ev.on('messages.upsert', ({ messages, type }) => {
+    ev.on('messages.upsert', ({ messages, type }) => {
       if (!current()) return;
       if (type !== 'notify' && type !== 'append') return;
       for (const message of messages) {
@@ -300,7 +329,7 @@ export class WhatsAppClient {
 
     if (this.hooks?.onDelete) {
       const onDelete = this.hooks.onDelete;
-      sock.ev.on('messages.delete', (event) => {
+      ev.on('messages.delete', (event) => {
         if (!current()) return;
         if ('keys' in event) {
           onDelete(event.keys).catch((error) => {
@@ -314,7 +343,7 @@ export class WhatsAppClient {
 
     if (this.hooks?.onParticipants) {
       const onParticipants = this.hooks.onParticipants;
-      sock.ev.on('group-participants.update', (data) => {
+      ev.on('group-participants.update', (data) => {
         if (!current()) return;
         onParticipants({
           jid: data.id,
@@ -337,7 +366,7 @@ export class WhatsAppClient {
     lastDisconnect?: { error?: Error | { output?: { statusCode?: number }; message?: string } };
   }): Promise<void> {
     const state = update.connection;
-    if (update.qr && !connection.isConnected) {
+    if (update.qr && !this.conn.isConnected) {
       /**
        * A QR push is the first moment the socket is genuinely usable: it arrives
        * after the handshake, from the server itself, offering pairing references.
@@ -347,14 +376,14 @@ export class WhatsAppClient {
       this.socketReady = true;
       this.readyResolve?.();
       this.readyResolve = null;
-      connection.patch({ pairingQr: update.qr });
+      this.conn.patch({ pairingQr: update.qr });
 
       // Only fetch a code when the owner actually asked for one. WhatsApp counts
       // every code request against a per-account linking limit and answers the
       // overflow with `429 rate-overlimit`, so a socket that requests one on
       // every restart quietly burns the owner's ability to pair at all.
       const target = this.activePairingNumber();
-      if (target && !this.pairingRequest && !connection.get().pairingCode) {
+      if (target && !this.pairingRequest && !this.conn.get().pairingCode) {
         void this.issuePairingCode(target).catch((error) => {
           logWarn('whatsapp', 'Pairing code request failed', {
             detail: error instanceof Error ? error.message : String(error),
@@ -368,7 +397,7 @@ export class WhatsAppClient {
       this.attempts = 0;
       this.pairingIntent = null;
       const selfJid = this.sock?.user?.id ? jidNormalizedUser(this.sock.user.id) : null;
-      connection.patch({
+      this.conn.patch({
         status: 'connected',
         selfJid,
         connectedAt: Date.now(),
@@ -387,8 +416,8 @@ export class WhatsAppClient {
     }
 
     if (state === 'connecting') {
-      if (connection.get().status !== 'connected') {
-        connection.patch({ status: this.auth?.hasPairedSession ? 'connecting' : 'awaiting_pairing' });
+      if (this.conn.get().status !== 'connected') {
+        this.conn.patch({ status: this.auth?.hasPairedSession ? 'connecting' : 'awaiting_pairing' });
         // The code itself is requested from the first QR push, once the socket is
         // actually open — see handleConnectionUpdate.
       }
@@ -398,7 +427,7 @@ export class WhatsAppClient {
     if (state === 'close' || state === 'error') {
       // A QR belongs to the socket that broadcasted it. Leaving the old one on
       // screen invites a scan that can never complete.
-      connection.patch({ lastDisconnectedAt: Date.now(), pairingQr: null });
+      this.conn.patch({ lastDisconnectedAt: Date.now(), pairingQr: null });
       const reasonCode = (disconnectError as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
       const reason = reasonCode ?? DisconnectReason.connectionClosed;
       const detail = `${reasonCode ?? 'unknown'}${disconnectError?.message ? ` — ${disconnectError.message}` : ''}`;
@@ -432,7 +461,7 @@ export class WhatsAppClient {
         this.authPromise = null;
         this.sock = null;
         this.pairingIntent = null;
-        connection.patch({
+        this.conn.patch({
           status: reason === DisconnectReason.loggedOut ? 'logged_out' : 'session_expired',
           selfJid: null,
           connectedAt: null,
@@ -451,14 +480,19 @@ export class WhatsAppClient {
        * again", not "back off and go dark" — a socket that exhausts its budget
        * leaves the owner staring at a dashboard with nothing to scan.
        */
-      if (!wasPaired && !connection.isConnected) {
+      if (!wasPaired && !this.conn.isConnected) {
+        if (this.instance !== OWNER_INSTANCE && Date.now() - this.lastDemand > BUYER_PAIRING_IDLE_MS) {
+          this.sock = null;
+          this.conn.patch({ status: 'disconnected', pairingQr: null, pairingCode: null, lastError: null });
+          return;
+        }
         const intent = this.activePairingNumber();
         await this.restartPairingSocket(detail, intent ? PAIRING_RETRY_DELAY_MS : QR_WINDOW_RETRY_MS);
         return;
       }
 
       if (reason === DisconnectReason.forbidden) {
-        connection.patch({ status: 'blocked_by_whatsapp', lastError: disconnectError?.message ?? null });
+        this.conn.patch({ status: 'blocked_by_whatsapp', lastError: disconnectError?.message ?? null });
         await botLog('error', 'whatsapp', 'WhatsApp refused the connection (403) — stopping reconnects', {
           reason: detail,
         });
@@ -466,7 +500,7 @@ export class WhatsAppClient {
       }
 
       if (this.shuttingDown) {
-        connection.patch({ status: 'disconnected' });
+        this.conn.patch({ status: 'disconnected' });
         return;
       }
 
@@ -478,7 +512,7 @@ export class WhatsAppClient {
   private async restartPairingSocket(detail: string, delayMs = PAIRING_RETRY_DELAY_MS): Promise<void> {
     this.attempts = 0;
     this.clearPairingTimer();
-    connection.patch({ status: 'awaiting_pairing', lastError: null });
+    this.conn.patch({ status: 'awaiting_pairing', lastError: null });
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -491,7 +525,7 @@ export class WhatsAppClient {
   private async scheduleReconnect(detail: string): Promise<void> {
     this.attempts += 1;
     if (this.attempts > MAX_RECONNECT_ATTEMPTS) {
-      connection.patch({ status: 'disconnected', lastError: `Disconnected after ${MAX_RECONNECT_ATTEMPTS} retries (${detail})` });
+      this.conn.patch({ status: 'disconnected', lastError: `Disconnected after ${MAX_RECONNECT_ATTEMPTS} retries (${detail})` });
       await botLog('error', 'whatsapp', 'Reconnect attempts exhausted — manual start required', {
         attempts: MAX_RECONNECT_ATTEMPTS,
       });
@@ -499,7 +533,7 @@ export class WhatsAppClient {
     }
 
     const delay = Math.min(2 ** (this.attempts - 1) * 1000, BACKOFF_CAP_MS);
-    connection.patch({ status: 'reconnecting', reconnectAttempt: this.attempts, lastError: detail });
+    this.conn.patch({ status: 'reconnecting', reconnectAttempt: this.attempts, lastError: detail });
     await botLog('warn', 'whatsapp', 'WhatsApp disconnected, scheduling reconnect', {
       attempt: this.attempts,
       delayMs: delay,
@@ -528,14 +562,15 @@ export class WhatsAppClient {
     if (normalized.length < 10 || normalized.length > 15) {
       throw new Error('That does not look like a full international number — country code first, e.g. 94771234567.');
     }
-    if (connection.isConnected) {
+    if (this.conn.isConnected) {
       throw new Error('This session is already paired and connected.');
     }
 
+    this.noteDemand();
     this.pairingIntent = { phoneNumber: normalized, until: Date.now() + PAIRING_INTENT_MS };
 
     if (!this.sock) {
-      connection.patch({ status: 'connecting' });
+      this.conn.patch({ status: 'connecting' });
       await this.connect();
     }
     if (!this.sock) throw new Error('WhatsApp socket could not be created.');
@@ -544,7 +579,7 @@ export class WhatsAppClient {
     // The first QR push may already have fetched a code for this exact number a
     // second ago. Hand that one back instead of sending a second request that
     // would void the code already on the owner's screen.
-    const live = connection.get();
+    const live = this.conn.get();
     if (live.pairingCode && live.phoneNumber === normalized && (live.pairingCodeExpiresAt ?? 0) > Date.now()) {
       return live.pairingCode;
     }
@@ -579,7 +614,7 @@ export class WhatsAppClient {
         PAIRING_REQUEST_TIMEOUT_MS,
         'WhatsApp did not answer the pairing request. Use Reconnect session and try again.'
       );
-      connection.patch({
+      this.conn.patch({
         status: 'awaiting_pairing',
         phoneNumber: normalized,
         pairingCode: code,
@@ -625,8 +660,8 @@ export class WhatsAppClient {
   private armPairingExpiry(): void {
     this.clearPairingTimer();
     this.pairingTimer = setTimeout(() => {
-      if (connection.isConnected) return;
-      connection.patch({ pairingCode: null, pairingCodeExpiresAt: null, lastError: 'Pairing code expired' });
+      if (this.conn.isConnected) return;
+      this.conn.patch({ pairingCode: null, pairingCodeExpiresAt: null, lastError: 'Pairing code expired' });
     }, PAIRING_CODE_TTL_MS);
     this.pairingTimer.unref();
   }
@@ -654,7 +689,7 @@ export class WhatsAppClient {
     }
     this.sock?.end(undefined);
     this.sock = null;
-    connection.patch({ status: 'disconnected', selfJid: null, connectedAt: null, pairingCode: null });
+    this.conn.patch({ status: 'disconnected', selfJid: null, connectedAt: null, pairingCode: null });
     await botLog('info', 'whatsapp', 'WhatsApp disconnected by request');
   }
 
@@ -677,7 +712,7 @@ export class WhatsAppClient {
       /* already gone */
     }
     this.sock = null;
-    connection.patch({ status: 'connecting', connectedAt: null, selfJid: null, reconnectAttempt: 0 });
+    this.conn.patch({ status: 'connecting', connectedAt: null, selfJid: null, reconnectAttempt: 0 });
     await this.connect();
     await botLog('info', 'whatsapp', 'Session reconnect requested');
   }
@@ -689,14 +724,14 @@ export class WhatsAppClient {
     if (!this.sock) {
       this.auth?.destroy();
       this.auth = null;
-      connection.patch({ status: 'logged_out', selfJid: null });
+      this.conn.patch({ status: 'logged_out', selfJid: null });
       return;
     }
     await this.sock.logout('AkenZ MD: logout requested from the private dashboard');
     this.auth?.destroy();
     this.auth = null;
     this.sock = null;
-    connection.patch({ status: 'logged_out', selfJid: null, connectedAt: null });
+    this.conn.patch({ status: 'logged_out', selfJid: null, connectedAt: null });
     await botLog('warn', 'whatsapp', 'WhatsApp session logged out');
   }
 
@@ -725,4 +760,45 @@ export class WhatsAppClient {
   }
 }
 
-export const whatsapp = new WhatsAppClient();
+const clients = new Map<number, WhatsAppClient>();
+
+export function clientFor(instance: number): WhatsAppClient {
+  let client = clients.get(instance);
+  if (!client) {
+    client = new WhatsAppClient(instance);
+    if (sharedHooks) client.attach(sharedHooks);
+    clients.set(instance, client);
+  }
+  return client;
+}
+
+export const allClients = (): WhatsAppClient[] => [...clients.values()];
+
+let sharedHooks: ClientHooks | null = null;
+
+/** The same handlers serve every bot; scope tells them which one is talking. */
+export function attachAll(hooks: ClientHooks): void {
+  sharedHooks = hooks;
+  for (const client of clients.values()) client.attach(hooks);
+}
+
+/** Stops a bot and forgets it, so a removed buyer leaves nothing running. */
+export async function dropClient(instance: number): Promise<void> {
+  const client = clients.get(instance);
+  clients.delete(instance);
+  if (client) await client.disconnect().catch(() => {});
+  forgetConnection(instance);
+}
+
+/**
+ * The client of whichever bot the current work belongs to. Commands and routes
+ * were written against one global client; resolving it per call keeps them
+ * correct without threading an instance through every call site.
+ */
+export const whatsapp = new Proxy({} as WhatsAppClient, {
+  get(_target, prop) {
+    const client = clientFor(currentInstance());
+    const value = Reflect.get(client, prop, client) as unknown;
+    return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(client) : value;
+  },
+});

@@ -15,6 +15,8 @@ import { whatsapp, type InboundMessage } from '../whatsapp/client.js';
 import { getText } from '../whatsapp/extract.js';
 import { hasAdminRights, isBotAdmin, isOwner } from './permissions.js';
 import { resolveCommand } from './registry.js';
+import { currentInstance, OWNER_INSTANCE, scoped } from '../lib/scope.js';
+import { isExpired } from '../whatsapp/instances.js';
 
 const seenGroups = new Set<string>();
 const rateWindows = new Map<string, number>();
@@ -47,10 +49,17 @@ async function resolveLanguage(
 
 export async function handleInbound(inbound: InboundMessage): Promise<void> {
   const { message, isGroup, jid: chatJid, pushName } = inbound;
-  if (inbound.fromMe) return; // the owner's own phone is not a command channel
+  const buyer = currentInstance() !== OWNER_INSTANCE;
+  // A buyer's bot runs on the buyer's own number, so their phone is the only
+  // way they can command it. Baileys echoes the bot's own sends with 3EB0 ids.
+  const selfCommand = buyer && inbound.fromMe && !message.key.id?.startsWith('3EB0');
+  if (inbound.fromMe && !selfCommand) return;
 
-  const senderJid = isGroup ? inbound.participant ?? chatJid : chatJid;
   const settings = await getConfig();
+  if (buyer && isExpired(settings)) return;
+  const senderJid = selfCommand
+    ? whatsapp.selfJid ?? chatJid
+    : isGroup ? inbound.participant ?? chatJid : chatJid;
   const text = getText(message);
 
   if (!text) return;
@@ -69,8 +78,10 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
 
   const groupSettings = isGroup ? await getGroupSettings(chatJid) : null;
   const prefix = groupSettings?.prefix || settings.prefix;
+  if (selfCommand && !(text.startsWith(prefix) && text.length > prefix.length)) return;
   const lang = await resolveLanguage(senderJid, text, settings);
-  const owner = isOwner(senderJid, settings.ownerNumber, config.bot.ownerJid);
+  // The seller's OWNER_JID only means something on the seller's own bot.
+  const owner = selfCommand || isOwner(senderJid, settings.ownerNumber, buyer ? undefined : config.bot.ownerJid);
 
   const sock = whatsapp.socket;
   if (!sock) return;
@@ -171,7 +182,7 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
   }
 
   if (command.rateLimitSeconds) {
-    const hit = rateLimitHit(`${senderJid}:${name}`, command.rateLimitSeconds);
+    const hit = rateLimitHit(scoped(`${senderJid}:${name}`), command.rateLimitSeconds);
     if (hit.blocked) {
       await replyText(t(lang, 'error.rateLimited', { seconds: hit.retryIn }));
       return;

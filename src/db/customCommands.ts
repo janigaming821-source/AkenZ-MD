@@ -1,5 +1,6 @@
 import { prisma } from './client.js';
 import { allCommands } from '../bot/registry.js';
+import { currentInstance } from '../lib/scope.js';
 import type { CustomCommand } from '../types.js';
 
 /**
@@ -24,7 +25,9 @@ export async function addCustomCommand(
 }
 
 export async function getCustomCommand(name: string): Promise<CustomCommand | null> {
-  return prisma.customCommand.findUnique({ where: { name: name.toLowerCase() } });
+  return prisma.customCommand.findUnique({
+    where: { name_instance: { name: name.toLowerCase(), instance: currentInstance() } },
+  });
 }
 
 export async function deleteCustomCommand(name: string): Promise<CustomCommand | null> {

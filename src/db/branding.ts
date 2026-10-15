@@ -2,8 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { prisma } from './client.js';
 import { logger } from '../lib/logger.js';
-
-const ID = 1;
+import { currentInstance } from '../lib/scope.js';
 
 /** Ceiling for a brand image, shared by the dashboard upload and .setlogo. */
 export const LOGO_MAX_BYTES = 3 * 1024 * 1024;
@@ -13,7 +12,7 @@ export const LOGO_MAX_BYTES = 3 * 1024 * 1024;
  * container restarts from its image, so a file written to assets/ disappears
  * with it. The in-memory copy below is the hot path — every .menu reads it.
  */
-let cache: { value: Buffer | null; loaded: boolean } = { value: null, loaded: false };
+const cache = new Map<number, Buffer | null>();
 
 /**
  * Which format the bytes actually are. WhatsApp re-compresses images and
@@ -28,20 +27,20 @@ export function imageFormat(bytes: Buffer): 'image/jpeg' | 'image/png' | null {
 
 /** Base64 payload and mime, or null when no image was uploaded. */
 export async function getLogo(): Promise<{ data: string; mime: string } | null> {
-  const row = await prisma.botConfig.findUnique({ where: { id: ID }, select: { logoData: true, logoMime: true } });
+  const row = await prisma.botConfig.findUnique({ where: { id: currentInstance() }, select: { logoData: true, logoMime: true } });
   if (!row?.logoData) return null;
   return { data: row.logoData, mime: row.logoMime ?? 'image/jpeg' };
 }
 
 export async function setLogo(bytes: Buffer, mime: string): Promise<void> {
   const data = bytes.toString('base64');
-  await prisma.botConfig.update({ where: { id: ID }, data: { logoData: data, logoMime: mime } });
-  cache = { value: Buffer.from(data, 'base64'), loaded: true };
+  await prisma.botConfig.update({ where: { id: currentInstance() }, data: { logoData: data, logoMime: mime } });
+  cache.set(currentInstance(), Buffer.from(data, 'base64'));
 }
 
 export async function clearLogo(): Promise<void> {
-  await prisma.botConfig.update({ where: { id: ID }, data: { logoData: null, logoMime: null } });
-  cache = { value: null, loaded: false };
+  await prisma.botConfig.update({ where: { id: currentInstance() }, data: { logoData: null, logoMime: null } });
+  cache.delete(currentInstance());
 }
 
 /**
@@ -49,10 +48,12 @@ export async function clearLogo(): Promise<void> {
  * assets/menu.jpg, else nothing — in which case the menu is plain text.
  */
 export async function menuImage(): Promise<Buffer | null> {
-  if (cache.loaded) return cache.value;
+  const id = currentInstance();
+  if (cache.has(id)) return cache.get(id) ?? null;
   const stored = await getLogo();
-  cache = { value: stored ? Buffer.from(stored.data, 'base64') : fromDisk(), loaded: true };
-  return cache.value;
+  const value = stored ? Buffer.from(stored.data, 'base64') : fromDisk();
+  cache.set(id, value);
+  return value;
 }
 
 function fromDisk(): Buffer | null {

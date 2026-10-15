@@ -14,6 +14,7 @@ import { addCustomCommand, deleteCustomCommand, isReservedName, listCustomComman
 import { clearLogo, getLogo, imageFormat, LOGO_MAX_BYTES, setLogo } from '../db/branding.js';
 import { connection, statusLabel } from '../whatsapp/state.js';
 import { whatsapp } from '../whatsapp/client.js';
+import { listInstances, provisionInstance, removeInstance, updateInstance } from '../whatsapp/instances.js';
 import { allCommands } from '../bot/registry.js';
 import { botStartedAt } from '../commands/general.js';
 import { aiIsConfigured } from '../tools/api.js';
@@ -21,6 +22,7 @@ import { toolVersion } from '../media/binary.js';
 import { logger } from '../lib/logger.js';
 import {
   apiGuard,
+  rescope,
   csrfProtection,
   loginUsernameMatches,
   requireAuth,
@@ -170,6 +172,7 @@ app.post('/api/whatsapp/pair', async (req, res) => {
 });
 
 app.get('/api/whatsapp/status', (_req, res) => {
+  whatsapp.noteDemand();
   const state = connection.get();
   res.json({
     status: state.status,
@@ -190,6 +193,8 @@ app.get('/api/whatsapp/status', (_req, res) => {
  * are throttled the QR is the path that still works.
  */
 app.get('/api/whatsapp/qr', async (_req, res) => {
+  // A buyer's bot sleeps until someone asks to link it.
+  await whatsapp.ensureStarted().catch((error) => logger.warn({ err: error }, 'socket start failed'));
   const qr = connection.get().pairingQr;
   if (!qr) {
     res.status(404).json({ error: 'No QR is being broadcast right now.' });
@@ -319,6 +324,7 @@ app.get('/api/settings/logo', async (_req, res) => {
 app.put(
   '/api/settings/logo',
   raw({ type: ['image/jpeg', 'image/png'], limit: LOGO_MAX_BYTES }),
+  rescope,
   async (req, res) => {
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const mime = imageFormat(bytes);
@@ -452,8 +458,13 @@ app.get('/api/logs', async (req, res) => {
 });
 
 app.get('/api/groups', async (_req, res) => {
-  const rows = await prisma.group.findMany({ orderBy: { updatedAt: 'desc' }, take: 100, include: { settings: true } });
-  res.json(rows);
+  const rows = await prisma.groupSettings.findMany({ orderBy: { updatedAt: 'desc' }, take: 100, include: { group: true } });
+  res.json(rows.map(({ group, ...settings }) => ({
+    jid: settings.groupJid,
+    name: group?.name ?? null,
+    memberCount: group?.memberCount ?? 0,
+    settings,
+  })));
 });
 
 app.get('/api/schedules', async (_req, res) => {
@@ -501,6 +512,52 @@ app.get('/api/media/tools', async (_req, res) => {
 app.get('/api/media/history', async (_req, res) => {
   const rows = await prisma.mediaHistory.findMany({ orderBy: { id: 'desc' }, take: 60 });
   res.json(rows);
+});
+
+// ── Buyer bots (shop server only, behind PROVISION_API_KEY) ──────────────
+const parseExpiry = (value: unknown): Date | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+app.get('/api/instances', async (_req, res) => {
+  res.json({ instances: await listInstances() });
+});
+
+app.post('/api/instances', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const label = String(body.label ?? '').trim();
+  const ownerNumber = normalizePhone(String(body.ownerNumber ?? ''));
+  if (!label || ownerNumber.length < 10) {
+    res.status(400).json({ error: 'label and an international ownerNumber are required' });
+    return;
+  }
+  const created = await provisionInstance({
+    label,
+    ownerNumber,
+    name: body.name ? String(body.name) : undefined,
+    plan: body.plan ? String(body.plan) : undefined,
+    expiresAt: parseExpiry(body.expiresAt) ?? null,
+  });
+  res.status(201).json(created);
+});
+
+app.patch('/api/instances/:id', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: { plan?: string; label?: string; expiresAt?: Date | null } = {};
+  if (body.plan !== undefined) patch.plan = String(body.plan).slice(0, 40);
+  if (body.label !== undefined) patch.label = String(body.label).slice(0, 80);
+  const expiry = parseExpiry(body.expiresAt);
+  if (expiry !== undefined) patch.expiresAt = expiry;
+  const ok = await updateInstance(Number(req.params.id), patch);
+  res.status(ok ? 200 : 404).json({ ok });
+});
+
+app.delete('/api/instances/:id', async (req, res) => {
+  const ok = await removeInstance(Number(req.params.id));
+  res.status(ok ? 200 : 404).json({ ok });
 });
 
 // ── Dashboard static files ───────────────────────────────────────────────

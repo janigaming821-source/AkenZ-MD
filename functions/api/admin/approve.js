@@ -16,6 +16,43 @@ const TOUCH_CUSTOMER = `
 const APPROVE = `UPDATE orders SET status = 'approved', handled_at = datetime('now'), customer_id = ? WHERE id = ? AND status != 'approved'`;
 
 /**
+ * Asking the bot server for a bot. The key it returns is the buyer's own API
+ * key: it scopes every later /api/bot/* call from the portal to that one bot.
+ */
+async function provisionBot(env, { label, ownerNumber, plan, days }) {
+  const base = String(env.BOT_URL ?? '').replace(/\/$/, '');
+  const key = String(env.BOT_PROVISION_KEY ?? '');
+  if (!base || !key) throw new Error('The bot server is not configured (BOT_URL / BOT_PROVISION_KEY).');
+  const res = await fetch(`${base}/api/instances`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-provision-key': key },
+    body: JSON.stringify({
+      label,
+      ownerNumber,
+      plan,
+      expiresAt: new Date(Date.now() + days * 86_400_000).toISOString(),
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`The bot server refused to create a bot (${res.status}): ${text.slice(0, 120)}`);
+  const created = JSON.parse(text);
+  if (!created?.apiKey) throw new Error('The bot server did not return a key.');
+  return { instance: String(created.instance), key: created.apiKey, url: base };
+}
+
+/** Extends a returning buyer's existing bot instead of forking a second one. */
+async function extendBot(env, instance, days) {
+  const base = String(env.BOT_URL ?? '').replace(/\/$/, '');
+  const key = String(env.BOT_PROVISION_KEY ?? '');
+  if (!base || !key || !instance) return;
+  await fetch(`${base}/api/instances/${encodeURIComponent(instance)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', 'x-provision-key': key },
+    body: JSON.stringify({ expiresAt: new Date(Date.now() + days * 86_400_000).toISOString() }),
+  }).catch(() => {});
+}
+
+/**
  * Approving an order is what creates the account: the password is generated
  * here, returned once to the owner, and only its PBKDF2 hash is stored. A repeat
  * purchase by the same number refreshes that buyer's row instead of forking a
@@ -43,13 +80,24 @@ export const onRequestPost = route(async (request, env) => {
   const botKey = String(body.bot_key ?? '').trim() || env.BOT_KEY || '';
 
   const existing = await env.DB.prepare(FIND_CUSTOMER).bind(phone).first();
+  // A returning buyer keeps the bot and key they already linked their phone to.
+  let instance = existing?.instance_id ?? instanceId;
+  let key = existing?.bot_key ?? botKey;
+  if (existing?.instance_id && existing?.bot_key && /^\d+$/.test(existing.instance_id)) {
+    await extendBot(env, existing.instance_id, PLANS[plan].days);
+  } else {
+    const made = await provisionBot(env, { label: `${order.name} — ${phone}`, ownerNumber: phone, plan, days: PLANS[plan].days });
+    instance = made.instance;
+    key = made.key;
+  }
+
   if (existing) {
     await env.DB.prepare(TOUCH_CUSTOMER)
-      .bind(order.name, plan, days, instanceId, botUrl, botKey, salt, hash, existing.id)
+      .bind(order.name, plan, days, instance, botUrl, key, salt, hash, existing.id)
       .run();
   } else {
     await env.DB.prepare(NEW_CUSTOMER)
-      .bind(phone, order.name, plan, days, salt, hash, instanceId, botUrl, botKey)
+      .bind(phone, order.name, plan, days, salt, hash, instance, botUrl, key)
       .run();
   }
 

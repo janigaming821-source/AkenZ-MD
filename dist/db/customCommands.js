@@ -1,5 +1,6 @@
 import { prisma } from './client.js';
 import { allCommands } from '../bot/registry.js';
+import { currentInstance } from '../lib/scope.js';
 /**
  * A custom command never overrides a built-in one, so a name the handler already
  * answers would sit in the database looking broken. Asking the registry keeps
@@ -15,7 +16,9 @@ export async function addCustomCommand(name, response, createdBy, mediaUrl) {
     });
 }
 export async function getCustomCommand(name) {
-    return prisma.customCommand.findUnique({ where: { name: name.toLowerCase() } });
+    return prisma.customCommand.findUnique({
+        where: { name_instance: { name: name.toLowerCase(), instance: currentInstance() } },
+    });
 }
 export async function deleteCustomCommand(name) {
     const found = await getCustomCommand(name);

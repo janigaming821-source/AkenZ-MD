@@ -1,8 +1,10 @@
 import { prisma } from './client.js';
+import { currentInstance } from '../lib/scope.js';
+const key = (jid) => ({ jid_instance: { jid, instance: currentInstance() } });
 /** Tracks the minimum needed to answer commands: identity, language, counters. */
 export async function touchUser(jid, name, countMessage = true) {
     return prisma.user.upsert({
-        where: { jid },
+        where: key(jid),
         create: {
             jid,
             waId: jid.split(':')[0] ?? null,
@@ -18,18 +20,18 @@ export async function touchUser(jid, name, countMessage = true) {
     });
 }
 export async function getUser(jid) {
-    return prisma.user.findUnique({ where: { jid } });
+    return prisma.user.findUnique({ where: key(jid) });
 }
 export async function setUserLanguage(jid, language) {
     await prisma.user.upsert({
-        where: { jid },
+        where: key(jid),
         create: { jid, language },
         update: { language },
     });
 }
 export async function setUserBlocked(jid, blocked, name = null) {
     await prisma.user.upsert({
-        where: { jid },
+        where: key(jid),
         create: { jid, blocked, name },
         update: { blocked, ...(name ? { name } : {}) },
     });

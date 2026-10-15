@@ -5,6 +5,7 @@ import { whatsapp } from '../whatsapp/client.js';
 import { invalidateGroupCache } from '../bot/permissions.js';
 import { isSelfJid, resolveTargetJid } from '../bot/targets.js';
 import type { Command, CommandContext } from '../types.js';
+import { scoped } from '../lib/scope.js';
 
 const lastTagAll = new Map<string, number>();
 
@@ -75,7 +76,7 @@ const tagall: Command = {
   inMenu: true,
   async execute(ctx) {
     const meta = await groupMeta(ctx);
-    const last = lastTagAll.get(ctx.groupJid!) ?? 0;
+    const last = lastTagAll.get(scoped(ctx.groupJid!)) ?? 0;
     const settings = await getGroupSettings(ctx.groupJid!);
     const cooldownMs = settings.tagallCooldown * 1000;
     if (Date.now() - last < cooldownMs && !ctx.isOwner) {
@@ -84,7 +85,7 @@ const tagall: Command = {
       );
       return;
     }
-    lastTagAll.set(ctx.groupJid!, Date.now());
+    lastTagAll.set(scoped(ctx.groupJid!), Date.now());
     const ids = meta.participants.map((p) => p.id);
     const note = ctx.fullArgs.trim();
     await ctx.reply(

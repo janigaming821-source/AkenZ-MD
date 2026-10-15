@@ -5,16 +5,17 @@ import { downloader, DownloaderError } from '../media/downloader.js';
 import { compressImage, resizeImage, stickerToImage, toSticker, videoToSticker } from '../media/images.js';
 import { downloadMedia, getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
 import { whatsapp } from '../whatsapp/client.js';
+import { scoped } from '../lib/scope.js';
 const hourly = new Map();
 /** Per-user hourly cap, so the bot never turns into a download farm. */
 function mediaQuota(senderJid) {
     const now = Date.now();
     const windowStart = now - 3_600_000;
-    const hits = (hourly.get(senderJid) ?? []).filter((t) => t > windowStart);
+    const hits = (hourly.get(scoped(senderJid)) ?? []).filter((t) => t > windowStart);
     if (hits.length >= config.media.rateLimitPerHour)
         return { allowed: false, used: hits.length };
     hits.push(now);
-    hourly.set(senderJid, hits);
+    hourly.set(scoped(senderJid), hits);
     return { allowed: true, used: hits.length };
 }
 async function guard(ctx, kind) {

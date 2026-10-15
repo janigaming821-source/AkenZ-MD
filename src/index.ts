@@ -11,7 +11,8 @@ import { handleInbound } from './bot/handler.js';
 import { handleParticipants } from './bot/events.js';
 import { handleStatus } from './bot/statusHandler.js';
 import { handleDeleteEvent } from './bot/groupProtect.js';
-import { whatsapp } from './whatsapp/client.js';
+import { allClients, attachAll } from './whatsapp/client.js';
+import { startAllInstances } from './whatsapp/instances.js';
 import { connection } from './whatsapp/state.js';
 import { startScheduler, stopScheduler } from './scheduler/index.js';
 import { dashboard } from './web/server.js';
@@ -48,7 +49,7 @@ async function main(): Promise<void> {
   const settings = await getConfig();
 
   const commandCount = registerAllCommands();
-  whatsapp.attach({
+  attachAll({
     onMessage: handleInbound,
     onParticipants: handleParticipants,
     onStatus: handleStatus,
@@ -81,12 +82,8 @@ async function main(): Promise<void> {
 
   // The socket connects in the background so the dashboard is reachable even
   // when WhatsApp is unreachable; pairing state is surfaced there.
-  void whatsapp
-    .start()
-    .then(() => {
-      const state = connection.get();
-      logInfo('whatsapp', 'WhatsApp startup sequence finished', { status: state.status });
-    })
+  void startAllInstances()
+    .then((count) => logInfo('whatsapp', 'WhatsApp startup sequence finished', { bots: count }))
     .catch(async (error) => {
       await logError('whatsapp', 'WhatsApp could not start', { detail: error instanceof Error ? error.message : String(error) });
       console.error(`WhatsApp start failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -129,11 +126,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`\n${signal} received — shutting down AkenZ MD…`);
   stopScheduler();
-  try {
-    await whatsapp.disconnect();
-  } catch {
-    /* socket may already be closed */
-  }
+  await Promise.all(allClients().map((client) => client.disconnect().catch(() => {})));
   await new Promise<void>((resolve) => {
     if (!httpServer) {
       resolve();

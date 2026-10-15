@@ -4,13 +4,14 @@ import { config } from '../config/env.js';
 import { prisma } from '../db/client.js';
 import { setPrefix, updateConfig } from '../db/config.js';
 import { addAutoReply, deleteAutoReply, listAutoReplies, splitTriggers, type MatchType } from '../db/autoreplies.js';
-import { addCustomCommand, deleteCustomCommand, isReservedName, listCustomCommands } from '../db/customCommands.js';
+import { addCustomCommand, deleteCustomCommand, getCustomCommand, isReservedName, listCustomCommands } from '../db/customCommands.js';
 import { countUsers, setUserBlocked } from '../db/users.js';
 import { getStats } from '../db/stats.js';
 import { logInfo } from '../db/botLog.js';
 import { formatBytes, formatDateTime } from './format.js';
 import { whatsapp } from '../whatsapp/client.js';
 import { resolveTargetJid } from '../bot/targets.js';
+import { currentInstance, OWNER_INSTANCE } from '../lib/scope.js';
 import type { Command, CommandContext } from '../types.js';
 
 const BROADCAST_MAX = 100;
@@ -95,6 +96,8 @@ const shutdown: Command = {
     await logInfo('owner', 'Owner shut the bot down');
     setTimeout(async () => {
       await whatsapp.disconnect().catch(() => undefined);
+      // A buyer's .shutdown may only stop their own bot; the process runs many.
+      if (currentInstance() !== OWNER_INSTANCE) return;
       process.exit(0);
     }, 800);
   },
@@ -236,7 +239,7 @@ const addcmd: Command = {
       return;
     }
     if (isReservedName(name)) return ctx.reply(`\`${name}\` is a built-in command name.`);
-    if (await prisma.customCommand.findUnique({ where: { name } })) {
+    if (await getCustomCommand(name)) {
       return ctx.reply(ctx.t('cmd.exists', { name }));
     }
     await addCustomCommand(name, response.slice(0, 2000), ctx.senderJid);
@@ -436,7 +439,7 @@ const database: Command = {
   async execute(ctx) {
     const counts = await Promise.all([
       prisma.user.count(),
-      prisma.group.count(),
+      prisma.groupSettings.count(),
       prisma.warning.count(),
       prisma.autoReply.count(),
       prisma.customCommand.count(),

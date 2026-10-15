@@ -6,6 +6,7 @@ import { compressImage, resizeImage, stickerToImage, toSticker, videoToSticker }
 import { downloadMedia, getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
 import { whatsapp } from '../whatsapp/client.js';
 import type { Command, CommandContext } from '../types.js';
+import { scoped } from '../lib/scope.js';
 
 const hourly = new Map<string, number[]>();
 
@@ -13,10 +14,10 @@ const hourly = new Map<string, number[]>();
 function mediaQuota(senderJid: string): { allowed: boolean; used: number } {
   const now = Date.now();
   const windowStart = now - 3_600_000;
-  const hits = (hourly.get(senderJid) ?? []).filter((t) => t > windowStart);
+  const hits = (hourly.get(scoped(senderJid)) ?? []).filter((t) => t > windowStart);
   if (hits.length >= config.media.rateLimitPerHour) return { allowed: false, used: hits.length };
   hits.push(now);
-  hourly.set(senderJid, hits);
+  hourly.set(scoped(senderJid), hits);
   return { allowed: true, used: hits.length };
 }
 

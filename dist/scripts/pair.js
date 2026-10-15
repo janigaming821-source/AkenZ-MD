@@ -12,7 +12,8 @@ import { handleInbound } from '../bot/handler.js';
 import { handleParticipants } from '../bot/events.js';
 import { handleStatus } from '../bot/statusHandler.js';
 import { whatsapp } from '../whatsapp/client.js';
-import { connection } from '../whatsapp/state.js';
+import { connection, connectionFor } from '../whatsapp/state.js';
+import { OWNER_INSTANCE } from '../lib/scope.js';
 import { normalizePhone } from '../config/env.js';
 const RESET = '\x1b[0m';
 const ORANGE = '\x1b[38;5;208m';
@@ -38,7 +39,7 @@ async function main() {
             printCode(announced);
         }
     };
-    connection.on('change', onState);
+    connectionFor(OWNER_INSTANCE).on('change', onState);
     // A WhatsApp code lives about a minute and is never replaced behind the owner's
     // back, so ask for the next one as soon as this one dies and keep the terminal
     // showing a live code for the whole window.
@@ -59,7 +60,7 @@ async function main() {
         }
         paired = connection.isConnected;
     }
-    connection.off('change', onState);
+    connectionFor(OWNER_INSTANCE).off('change', onState);
     if (!paired) {
         console.error('\nNot paired yet. Run the command again, or pair from the dashboard at');
         console.error(`http://${config.dashboard.host}:${config.dashboard.port} (page: WhatsApp).\n`);

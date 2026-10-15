@@ -4,6 +4,7 @@ import { logWarn } from '../db/botLog.js';
 import { whatsapp } from '../whatsapp/client.js';
 import { invalidateGroupCache } from '../bot/permissions.js';
 import { isSelfJid, resolveTargetJid } from '../bot/targets.js';
+import { scoped } from '../lib/scope.js';
 const lastTagAll = new Map();
 function requireGroup(ctx) {
     return ctx.isGroup && Boolean(ctx.groupJid);
@@ -65,14 +66,14 @@ const tagall = {
     inMenu: true,
     async execute(ctx) {
         const meta = await groupMeta(ctx);
-        const last = lastTagAll.get(ctx.groupJid) ?? 0;
+        const last = lastTagAll.get(scoped(ctx.groupJid)) ?? 0;
         const settings = await getGroupSettings(ctx.groupJid);
         const cooldownMs = settings.tagallCooldown * 1000;
         if (Date.now() - last < cooldownMs && !ctx.isOwner) {
             await ctx.reply(ctx.t('group.tagall.cooldown', { seconds: Math.ceil((cooldownMs - (Date.now() - last)) / 1000) }));
             return;
         }
-        lastTagAll.set(ctx.groupJid, Date.now());
+        lastTagAll.set(scoped(ctx.groupJid), Date.now());
         const ids = meta.participants.map((p) => p.id);
         const note = ctx.fullArgs.trim();
         await ctx.reply([`📣 *${meta.subject}*`, note ? `\n${note}` : '', ...ids.map((id) => `@${id.split('@')[0]}`)].filter(Boolean).join('\n'), { mentions: ids });

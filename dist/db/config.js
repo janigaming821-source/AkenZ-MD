@@ -1,13 +1,17 @@
 import { prisma } from './client.js';
 import { config } from '../config/env.js';
-const ID = 1;
+import { currentInstance, OWNER_INSTANCE } from '../lib/scope.js';
 async function row() {
-    const existing = await prisma.botConfig.findUnique({ where: { id: ID } });
+    const id = currentInstance();
+    const existing = await prisma.botConfig.findUnique({ where: { id } });
     if (existing)
         return existing;
+    // Buyer rows are created by provisioning; only the owner's is born here.
+    if (id !== OWNER_INSTANCE)
+        throw new Error(`Bot instance ${id} does not exist.`);
     return prisma.botConfig.create({
         data: {
-            id: ID,
+            id,
             name: config.bot.name,
             version: config.bot.version,
             prefix: config.bot.prefix,
@@ -25,19 +29,19 @@ async function row() {
 }
 /**
  * The database is the source of truth for settings that the owner can change
- * from WhatsApp or the dashboard. The owner number always follows .env, since
- * a stale value there would lock the real owner out or hand access to a stranger.
+ * from WhatsApp or the dashboard. The owner number of the owner's own bot always
+ * follows .env, since a stale value there would lock the real owner out.
  */
 export async function getConfig() {
     const current = await row();
-    if (config.bot.ownerNumber && current.ownerNumber !== config.bot.ownerNumber) {
-        return prisma.botConfig.update({ where: { id: ID }, data: { ownerNumber: config.bot.ownerNumber } });
+    if (current.id === OWNER_INSTANCE && config.bot.ownerNumber && current.ownerNumber !== config.bot.ownerNumber) {
+        return prisma.botConfig.update({ where: { id: current.id }, data: { ownerNumber: config.bot.ownerNumber } });
     }
     return current;
 }
 export async function updateConfig(patch) {
-    await row();
-    return prisma.botConfig.update({ where: { id: ID }, data: patch });
+    const current = await row();
+    return prisma.botConfig.update({ where: { id: current.id }, data: patch });
 }
 export async function setPrefix(prefix) {
     if (!/^[!./#]$/.test(prefix)) {

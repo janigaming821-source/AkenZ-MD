@@ -1,4 +1,5 @@
-// AkenZ MD — database schema (SQLite, single-owner personal deployment)
+// AkenZ MD — database schema (SQLite). One process hosts several bots: a
+// BotConfig row is an instance and every other row carries its instance id.
 // SQLite has no enum/json column types in Prisma, so enum-like fields are
 // validated where they are written and JSON-ish fields are stored as strings.
 
@@ -11,36 +12,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Single row (id = 1). Global bot settings.
+// One row per bot instance; id 1 is the owner's own bot.
 model BotConfig {
-  id                Int      @id @default(1)
-  name              String   @default("AkenZ MD")
-  version           String   @default("1.0.0")
-  prefix            String   @default(".")
-  language          String   @default("en")
-  ownerNumber       String   @default("")
-  aiEnabled         Boolean  @default(false)
-  autoReplyEnabled  Boolean  @default(true)
-  welcomeEnabled    Boolean  @default(true)
-  goodbyeEnabled    Boolean  @default(true)
-  mediaEnabled      Boolean  @default(true)
-  groupToolsEnabled Boolean  @default(true)
-  privateChatsOnly  Boolean  @default(false)
-  statusText        String   @default("AkenZ MD")
+  /// Row 1 is the seller's own bot; each buyer's bot is another row, and the id
+  /// doubles as the instance id every scoped table points back to.
+  id                Int       @id @default(autoincrement())
+  name              String    @default("AkenZ MD")
+  version           String    @default("1.0.0")
+  prefix            String    @default(".")
+  language          String    @default("en")
+  ownerNumber       String    @default("")
+  aiEnabled         Boolean   @default(false)
+  autoReplyEnabled  Boolean   @default(true)
+  welcomeEnabled    Boolean   @default(true)
+  goodbyeEnabled    Boolean   @default(true)
+  mediaEnabled      Boolean   @default(true)
+  groupToolsEnabled Boolean   @default(true)
+  privateChatsOnly  Boolean   @default(false)
+  statusText        String    @default("AkenZ MD")
   /// Menu banner image, base64. Kept in the database so an uploaded brand survives
   /// a redeploy, where the container's disk (and assets/) is ephemeral.
   logoData          String?
   logoMime          String?
-  maxWarnings       Int      @default(3)
-  warningAction     String   @default("mute")
+  maxWarnings       Int       @default(3)
+  warningAction     String    @default("mute")
   dashboardHash     String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  /// sha256 of the key the shop uses to drive this bot; null on the owner's row.
+  apiKey            String?
+  label             String?
+  plan              String?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model User {
   id           Int      @id @default(autoincrement())
-  jid          String   @unique
+  jid          String
+  instance     Int      @default(1)
   waId         String?
   name         String?
   firstSeen    DateTime @default(now())
@@ -50,6 +59,7 @@ model User {
   language     String?
   blocked      Boolean  @default(false)
 
+  @@unique([jid, instance])
   @@index([lastSeen])
 }
 
@@ -61,15 +71,16 @@ model Group {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  settings  GroupSettings?
-  warnings  Warning[]
+  settings GroupSettings[]
+  warnings Warning[]
 
   @@index([jid])
 }
 
 model GroupSettings {
   id             Int      @id @default(autoincrement())
-  groupJid       String   @unique
+  groupJid       String
+  instance       Int      @default(1)
   prefix         String?
   welcome        Boolean  @default(true)
   goodbye        Boolean  @default(true)
@@ -84,16 +95,19 @@ model GroupSettings {
   updatedAt      DateTime @updatedAt
 
   group Group? @relation(fields: [groupJid], references: [jid], onDelete: Cascade)
+
+  @@unique([groupJid, instance])
 }
 
 model Warning {
-  id         Int      @id @default(autoincrement())
-  groupJid   String
-  userJid    String
-  reason     String   @default("")
-  issuedBy   String
-  revoked    Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  groupJid  String
+  userJid   String
+  instance  Int      @default(1)
+  reason    String   @default("")
+  issuedBy  String
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   group Group @relation(fields: [groupJid], references: [jid], onDelete: Cascade)
 
@@ -103,6 +117,7 @@ model Warning {
 model AutoReply {
   id        Int      @id @default(autoincrement())
   triggers  String
+  instance  Int      @default(1)
   matchType String   @default("exact")
   response  String
   enabled   Boolean  @default(true)
@@ -113,16 +128,20 @@ model AutoReply {
 
 model CustomCommand {
   id        Int      @id @default(autoincrement())
-  name      String   @unique
+  name      String
+  instance  Int      @default(1)
   response  String
   mediaUrl  String?
   createdBy String
   createdAt DateTime @default(now())
+
+  @@unique([name, instance])
 }
 
 model MediaHistory {
   id        Int      @id @default(autoincrement())
   kind      String
+  instance  Int      @default(1)
   query     String
   provider  String?
   requester String?
@@ -137,6 +156,7 @@ model MediaHistory {
 model ScheduledTask {
   id        Int      @id @default(autoincrement())
   chatJid   String
+  instance  Int      @default(1)
   message   String
   kind      String   @default("message")
   runAt     DateTime
@@ -153,6 +173,7 @@ model ScheduledTask {
 model OwnerAction {
   id        Int      @id @default(autoincrement())
   action    String
+  instance  Int      @default(1)
   detail    String?
   target    String?
   actorJid  String
@@ -164,6 +185,7 @@ model OwnerAction {
 model BotLog {
   id        Int      @id @default(autoincrement())
   level     String
+  instance  Int      @default(1)
   scope     String
   message   String
   meta      String   @default("{}")
@@ -178,6 +200,7 @@ model BotLog {
 model MessageStat {
   id        Int      @id @default(autoincrement())
   chatJid   String
+  instance  Int      @default(1)
   isGroup   Boolean  @default(false)
   command   String?
   createdAt DateTime @default(now())
@@ -190,6 +213,7 @@ model MessageStat {
 model Note {
   id        Int      @id @default(autoincrement())
   userJid   String
+  instance  Int      @default(1)
   title     String
   content   String
   createdAt DateTime @default(now())

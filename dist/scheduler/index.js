@@ -1,6 +1,8 @@
 import { prisma } from '../db/client.js';
 import { logError, logInfo } from '../db/botLog.js';
-import { whatsapp } from '../whatsapp/client.js';
+import { allClients, whatsapp } from '../whatsapp/client.js';
+import { stopExpiredInstances } from '../whatsapp/instances.js';
+import { runInInstance } from '../lib/scope.js';
 const TICK_MS = 20_000;
 const MAX_ATTEMPTS = 3;
 let timer = null;
@@ -34,11 +36,18 @@ async function runDueTasks() {
         }
     }
 }
+async function tick() {
+    await stopExpiredInstances();
+    for (const client of allClients()) {
+        if (client.isConnected)
+            await runInInstance(client.instance, runDueTasks);
+    }
+}
 export function startScheduler() {
     if (timer)
         return;
     timer = setInterval(() => {
-        void runDueTasks().catch((error) => logError('scheduler', 'Scheduler tick failed', { detail: String(error) }));
+        void tick().catch((error) => logError('scheduler', 'Scheduler tick failed', { detail: String(error) }));
     }, TICK_MS);
     timer.unref();
 }

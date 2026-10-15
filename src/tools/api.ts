@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { config } from '../config/env.js';
 import type { Language } from '../types.js';
+import { scoped } from '../lib/scope.js';
 
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; reason: 'not-configured' | 'not-found' | 'failed'; message?: string };
 
@@ -13,9 +14,9 @@ export const aiIsConfigured = (): boolean =>
 
 function remember(chatJid: string, turn: Turn): void {
   if (config.ai.historyLimit === 0) return;
-  const list = history.get(chatJid) ?? [];
+  const list = history.get(scoped(chatJid)) ?? [];
   list.push(turn);
-  history.set(chatJid, list.slice(-config.ai.historyLimit * 2));
+  history.set(scoped(chatJid), list.slice(-config.ai.historyLimit * 2));
 }
 
 async function askGemini(question: string, context: Turn[]): Promise<string> {
@@ -54,7 +55,7 @@ async function askOpenAi(question: string, context: Turn[]): Promise<string> {
 
 export async function askAi(chatJid: string, question: string): Promise<ToolResult<string>> {
   if (!aiIsConfigured()) return { ok: false, reason: 'not-configured' };
-  const context = history.get(chatJid) ?? [];
+  const context = history.get(scoped(chatJid)) ?? [];
   try {
     const answer =
       config.ai.provider === 'gemini' ? await askGemini(question, context) : await askOpenAi(question, context);

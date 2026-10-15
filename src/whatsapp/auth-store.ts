@@ -6,6 +6,7 @@ import { config } from '../config/env.js';
 import { prisma } from '../db/client.js';
 import { decryptJson, encryptJson } from '../lib/crypto.js';
 import { logger } from '../lib/logger.js';
+import { OWNER_INSTANCE } from '../lib/scope.js';
 
 type KeyType = keyof SignalDataTypeMap;
 type KeyMap = { [T in KeyType]?: { [id: string]: SignalDataTypeMap[T] } };
@@ -15,6 +16,12 @@ const KEYS_FILE = 'keys.enc.json';
 const WRITE_FLUSH_MS = 400;
 const SESSION_ROW_CREDS = 'creds';
 const SESSION_ROW_KEYS = 'keys';
+
+/**
+ * The owner's bot keeps the original unsuffixed names, so the session it already
+ * has stays linked; every other instance gets its own suffix.
+ */
+const suffixed = (name: string, instance: number) => (instance === OWNER_INSTANCE ? name : `${name}-${instance}`);
 
 /** write → temp file → rename, so a crash mid-write cannot corrupt the session */
 function atomicWrite(file: string, data: string): void {
@@ -77,9 +84,14 @@ interface SessionStorage {
   clear(): Promise<void>;
 }
 
+type Row = typeof SESSION_ROW_CREDS | typeof SESSION_ROW_KEYS;
+
 class FileSessionStorage implements SessionStorage {
+  constructor(private readonly instance: number) {}
+
   private path(id: string): string {
-    return join(config.session.dir, id === SESSION_ROW_KEYS ? KEYS_FILE : CREDS_FILE);
+    const file = id === SESSION_ROW_KEYS ? KEYS_FILE : CREDS_FILE;
+    return join(config.session.dir, suffixed(file.replace('.enc.json', ''), this.instance) + '.enc.json');
   }
 
   async load(id: string): Promise<string | undefined> {
@@ -93,7 +105,7 @@ class FileSessionStorage implements SessionStorage {
   }
 
   async clear(): Promise<void> {
-    for (const file of [join(config.session.dir, CREDS_FILE), join(config.session.dir, KEYS_FILE)]) {
+    for (const file of [this.path(SESSION_ROW_CREDS), this.path(SESSION_ROW_KEYS)]) {
       try {
         if (existsSync(file)) unlinkSync(file);
       } catch (error) {
@@ -104,21 +116,31 @@ class FileSessionStorage implements SessionStorage {
 }
 
 class DbSessionStorage implements SessionStorage {
+  constructor(private readonly instance: number) {}
+
+  private rowId(id: string): string {
+    return suffixed(id as Row, this.instance);
+  }
+
   async load(id: string): Promise<string | undefined> {
-    const row = await prisma.sessionStore.findUnique({ where: { id } });
+    const row = await prisma.sessionStore.findUnique({ where: { id: this.rowId(id) } });
     return row?.payload;
   }
 
   async save(id: string, payload: string): Promise<void> {
-    await prisma.sessionStore.upsert({ where: { id }, create: { id, payload }, update: { payload } });
+    const rowId = this.rowId(id);
+    await prisma.sessionStore.upsert({ where: { id: rowId }, create: { id: rowId, payload }, update: { payload } });
   }
 
   async clear(): Promise<void> {
     await prisma.sessionStore.deleteMany({
-      where: { id: { in: [SESSION_ROW_CREDS, SESSION_ROW_KEYS] } },
+      where: { id: { in: [this.rowId(SESSION_ROW_CREDS), this.rowId(SESSION_ROW_KEYS)] } },
     });
   }
 }
+
+const storageFor = (instance: number): SessionStorage =>
+  config.db.remote ? new DbSessionStorage(instance) : new FileSessionStorage(instance);
 
 /**
  * On-disk (or in-database) Baileys auth state, AES-256-GCM encrypted with
@@ -135,8 +157,19 @@ export class EncryptedAuthState {
   private flushTimer: NodeJS.Timeout | undefined;
   private writing = false;
 
-  static async create(): Promise<EncryptedAuthState> {
-    const storage = config.db.remote ? new DbSessionStorage() : new FileSessionStorage();
+  /** Whether this instance has a finished pairing on record, without building a socket. */
+  static async isPaired(instance: number): Promise<boolean> {
+    const raw = await storageFor(instance).load(SESSION_ROW_CREDS);
+    return decryptOrUndefined<AuthenticationCreds>(raw, CREDS_FILE)?.registered === true;
+  }
+
+  /** Drops an instance's stored session, e.g. when a buyer's bot is removed. */
+  static async wipe(instance: number): Promise<void> {
+    await storageFor(instance).clear();
+  }
+
+  static async create(instance: number): Promise<EncryptedAuthState> {
+    const storage = storageFor(instance);
     const [credsRaw, keysRaw] = await Promise.all([
       storage.load(SESSION_ROW_CREDS),
       storage.load(SESSION_ROW_KEYS),

@@ -5,11 +5,17 @@ import { config } from '../config/env.js';
 import { prisma } from '../db/client.js';
 import { decryptJson, encryptJson } from '../lib/crypto.js';
 import { logger } from '../lib/logger.js';
+import { OWNER_INSTANCE } from '../lib/scope.js';
 const CREDS_FILE = 'creds.enc.json';
 const KEYS_FILE = 'keys.enc.json';
 const WRITE_FLUSH_MS = 400;
 const SESSION_ROW_CREDS = 'creds';
 const SESSION_ROW_KEYS = 'keys';
+/**
+ * The owner's bot keeps the original unsuffixed names, so the session it already
+ * has stays linked; every other instance gets its own suffix.
+ */
+const suffixed = (name, instance) => (instance === OWNER_INSTANCE ? name : `${name}-${instance}`);
 /** write → temp file → rename, so a crash mid-write cannot corrupt the session */
 function atomicWrite(file, data) {
     const tmp = `${file}.${process.pid}.tmp`;
@@ -58,8 +64,13 @@ function resetUnregisteredIdentity(creds) {
     return creds;
 }
 class FileSessionStorage {
+    instance;
+    constructor(instance) {
+        this.instance = instance;
+    }
     path(id) {
-        return join(config.session.dir, id === SESSION_ROW_KEYS ? KEYS_FILE : CREDS_FILE);
+        const file = id === SESSION_ROW_KEYS ? KEYS_FILE : CREDS_FILE;
+        return join(config.session.dir, suffixed(file.replace('.enc.json', ''), this.instance) + '.enc.json');
     }
     async load(id) {
         const file = this.path(id);
@@ -71,7 +82,7 @@ class FileSessionStorage {
         atomicWrite(this.path(id), payload);
     }
     async clear() {
-        for (const file of [join(config.session.dir, CREDS_FILE), join(config.session.dir, KEYS_FILE)]) {
+        for (const file of [this.path(SESSION_ROW_CREDS), this.path(SESSION_ROW_KEYS)]) {
             try {
                 if (existsSync(file))
                     unlinkSync(file);
@@ -83,19 +94,28 @@ class FileSessionStorage {
     }
 }
 class DbSessionStorage {
+    instance;
+    constructor(instance) {
+        this.instance = instance;
+    }
+    rowId(id) {
+        return suffixed(id, this.instance);
+    }
     async load(id) {
-        const row = await prisma.sessionStore.findUnique({ where: { id } });
+        const row = await prisma.sessionStore.findUnique({ where: { id: this.rowId(id) } });
         return row?.payload;
     }
     async save(id, payload) {
-        await prisma.sessionStore.upsert({ where: { id }, create: { id, payload }, update: { payload } });
+        const rowId = this.rowId(id);
+        await prisma.sessionStore.upsert({ where: { id: rowId }, create: { id: rowId, payload }, update: { payload } });
     }
     async clear() {
         await prisma.sessionStore.deleteMany({
-            where: { id: { in: [SESSION_ROW_CREDS, SESSION_ROW_KEYS] } },
+            where: { id: { in: [this.rowId(SESSION_ROW_CREDS), this.rowId(SESSION_ROW_KEYS)] } },
         });
     }
 }
+const storageFor = (instance) => config.db.remote ? new DbSessionStorage(instance) : new FileSessionStorage(instance);
 /**
  * On-disk (or in-database) Baileys auth state, AES-256-GCM encrypted with
  * SESSION_ENCRYPTION_KEY. Raw credentials never leave this process and are
@@ -110,8 +130,17 @@ export class EncryptedAuthState {
     keysDirty = false;
     flushTimer;
     writing = false;
-    static async create() {
-        const storage = config.db.remote ? new DbSessionStorage() : new FileSessionStorage();
+    /** Whether this instance has a finished pairing on record, without building a socket. */
+    static async isPaired(instance) {
+        const raw = await storageFor(instance).load(SESSION_ROW_CREDS);
+        return decryptOrUndefined(raw, CREDS_FILE)?.registered === true;
+    }
+    /** Drops an instance's stored session, e.g. when a buyer's bot is removed. */
+    static async wipe(instance) {
+        await storageFor(instance).clear();
+    }
+    static async create(instance) {
+        const storage = storageFor(instance);
         const [credsRaw, keysRaw] = await Promise.all([
             storage.load(SESSION_ROW_CREDS),
             storage.load(SESSION_ROW_KEYS),

@@ -2,6 +2,7 @@ import { whatsapp } from '../whatsapp/client.js';
 import { getGroupSettings } from '../db/groups.js';
 import { hasAdminRights } from './permissions.js';
 import { logError } from '../db/botLog.js';
+import { scoped } from '../lib/scope.js';
 const LINK_PATTERN = /(?:https?:\/\/|www\.)\S+|whatsapp\.com\/\S+/i;
 const recentMessages = new Map();
 const MAX_CACHED = 200;
@@ -14,7 +15,7 @@ function cacheKey(groupJid, messageId) {
 export function cacheMessage(inbound) {
     if (!inbound.isGroup)
         return;
-    const key = cacheKey(inbound.jid, inbound.message.key.id ?? '');
+    const key = scoped(cacheKey(inbound.jid, inbound.message.key.id ?? ''));
     const text = extractText(inbound);
     recentMessages.set(key, {
         text,
@@ -92,7 +93,7 @@ export async function checkAntiSpam(inbound) {
     if (isAdmin)
         return false;
     const now = Date.now();
-    const windowKey = `${inbound.jid}:${sender}`;
+    const windowKey = scoped(`${inbound.jid}:${sender}`);
     const timestamps = spamWindow.get(windowKey) ?? [];
     const recent = timestamps.filter((t) => now - t < SPAM_WINDOW_MS);
     recent.push(now);
@@ -118,7 +119,7 @@ export async function handleDeleteEvent(keys) {
     for (const key of keys) {
         if (!key.remoteJid || !key.id || !key.remoteJid.includes('@g.us'))
             continue;
-        const ck = cacheKey(key.remoteJid, key.id);
+        const ck = scoped(cacheKey(key.remoteJid, key.id));
         const cached = recentMessages.get(ck);
         if (!cached)
             continue;

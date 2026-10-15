@@ -1,13 +1,14 @@
 import axios from 'axios';
 import { config } from '../config/env.js';
+import { scoped } from '../lib/scope.js';
 const history = new Map();
 export const aiIsConfigured = () => config.ai.provider !== 'none' && Boolean(config.ai.apiKey) && Boolean(config.ai.model);
 function remember(chatJid, turn) {
     if (config.ai.historyLimit === 0)
         return;
-    const list = history.get(chatJid) ?? [];
+    const list = history.get(scoped(chatJid)) ?? [];
     list.push(turn);
-    history.set(chatJid, list.slice(-config.ai.historyLimit * 2));
+    history.set(scoped(chatJid), list.slice(-config.ai.historyLimit * 2));
 }
 async function askGemini(question, context) {
     const contents = [
@@ -38,7 +39,7 @@ async function askOpenAi(question, context) {
 export async function askAi(chatJid, question) {
     if (!aiIsConfigured())
         return { ok: false, reason: 'not-configured' };
-    const context = history.get(chatJid) ?? [];
+    const context = history.get(scoped(chatJid)) ?? [];
     try {
         const answer = config.ai.provider === 'gemini' ? await askGemini(question, context) : await askOpenAi(question, context);
         remember(chatJid, { role: 'user', text: question });

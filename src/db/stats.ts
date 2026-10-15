@@ -20,7 +20,7 @@ export async function getStats(): Promise<BotStats> {
   const [users, groups, messages, commands, autoReplies, customCommands, warnings, scheduled, media] =
     await Promise.all([
       prisma.user.count(),
-      prisma.group.count(),
+      prisma.groupSettings.count(),
       prisma.messageStat.count(),
       prisma.messageStat.count({ where: { command: { not: null } } }),
       prisma.autoReply.count(),
