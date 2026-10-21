@@ -18,6 +18,7 @@ import { listInstances, provisionInstance, removeInstance, updateInstance } from
 import { allCommands } from '../bot/registry.js';
 import { botStartedAt } from '../commands/general.js';
 import { aiIsConfigured } from '../tools/api.js';
+import { validatePublicUrl } from '../tools/url.js';
 import { toolVersion } from '../media/binary.js';
 import { logger } from '../lib/logger.js';
 import { apiGuard, rescope, loginUsernameMatches, requireAuth, sessionMiddleware, verifyPassword, tooManyAttempts, registerFailedAttempt, clearAttempts, } from './auth.js';
@@ -82,6 +83,70 @@ app.use('/api', apiGuard);
 app.get('/api/csrf', (req, res) => {
     const sess = req.session;
     res.json({ token: sess.csrf ?? null });
+});
+// ── Order alerts (storefront → owner) ──────────────────────────────────────
+/**
+ * Reached only with the shared NOTIFY_API_KEY header (see notifyGuard). The
+ * storefront posts one alert per recipient; the owner queue and the buyer copy
+ * can both carry the payment slip fetched from its signed URL. Always sends on
+ * the owner's instance, so a notify caller can never drive a buyer's socket.
+ *
+ * The stanza id comes back in `id` so the storefront can quote this message on
+ * the next alert for the same order — that is what keeps a whole order, from
+ * "new" to "delivered", readable as one WhatsApp thread. `quote_id` does the
+ * quoting.
+ */
+app.post('/api/notify', async (req, res) => {
+    const body = (req.body ?? {});
+    const to = normalizePhone(String(body.to ?? ''));
+    const text = String(body.text ?? '').trim().slice(0, 4000);
+    const media = String(body.media_url ?? '').trim();
+    const quoteId = String(body.quote_id ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+    if (to.length < 8 || to.length > 16) {
+        res.status(400).json({ error: 'invalid recipient number' });
+        return;
+    }
+    if (!text && !media) {
+        res.status(400).json({ error: 'nothing to send' });
+        return;
+    }
+    if (connection.get().status !== 'connected') {
+        res.status(503).json({ error: 'whatsapp not connected' });
+        return;
+    }
+    const jid = `${to}@s.whatsapp.net`;
+    // Only an id we sent ourselves can be quoted — the alerts live in the owner's
+    // own chat with the bot, so remoteJid is the recipient either way.
+    const quoted = quoteId
+        ? { key: { id: quoteId, remoteJid: jid, fromMe: true } }
+        : undefined;
+    try {
+        if (media) {
+            const validated = await validatePublicUrl(media);
+            if (validated.ok) {
+                const { default: axios } = await import('axios');
+                const fetched = await axios.get(validated.url.toString(), {
+                    responseType: 'arraybuffer',
+                    timeout: 20_000,
+                    maxContentLength: 8 * 1024 * 1024,
+                    maxRedirects: 5,
+                });
+                const sent = await whatsapp.sendMessage(jid, {
+                    image: Buffer.from(fetched.data),
+                    ...(text ? { caption: text } : {}),
+                }, quoted ? { quoted } : {});
+                res.json({ ok: true, sent: 'image', id: sent?.key?.id ?? null });
+                return;
+            }
+            // An unreachable or non-public media URL must still deliver the message.
+        }
+        const sent = await whatsapp.sendMessage(jid, { text: text || '🔔 New order alert.' }, quoted ? { quoted } : {});
+        res.json({ ok: true, sent: 'text', id: sent?.key?.id ?? null });
+    }
+    catch (error) {
+        await botLog('error', 'notify', `Order alert failed: ${describe(error)}`);
+        res.status(502).json({ error: describe(error) });
+    }
 });
 // ── Status ───────────────────────────────────────────────────────────────
 app.get('/api/status', async (_req, res) => {

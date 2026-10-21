@@ -145,6 +145,10 @@ export function apiGuard(req: Request, res: Response, next: NextFunction): void 
     provisionGuard(req, res, next);
     return;
   }
+  if (req.originalUrl.startsWith('/api/notify')) {
+    notifyGuard(req, res, next);
+    return;
+  }
   viaBuyerKey(req)
     .then((instance) => {
       if (instance === null) {
@@ -172,6 +176,21 @@ function provisionGuard(req: Request, res: Response, next: NextFunction): void {
   }
   res.setHeader('cache-control', 'no-store');
   next();
+}
+
+/**
+ * The storefront pushes order alerts here with a shared header key. It sends on
+ * the owner's instance only — a notify caller cannot reach a buyer's socket —
+ * and the key replaces CSRF the same way the shop key does.
+ */
+function notifyGuard(req: Request, res: Response, next: NextFunction): void {
+  const provided = req.get('x-notify-key') ?? '';
+  if (!config.dashboard.notifyApiKey || !safeEqual(provided, config.dashboard.notifyApiKey)) {
+    res.status(401).json({ error: 'notify key required' });
+    return;
+  }
+  res.setHeader('cache-control', 'no-store');
+  runInInstance(OWNER_INSTANCE, next);
 }
 
 export const loginUsernameMatches = (given: string): boolean =>

@@ -735,9 +735,13 @@ export class WhatsAppClient {
     await botLog('warn', 'whatsapp', 'WhatsApp session logged out');
   }
 
-  async sendMessage(jid: string, content: AnyMessageContent): Promise<WAMessage | undefined> {
+  async sendMessage(
+    jid: string,
+    content: AnyMessageContent,
+    options: { quoted?: WAMessage } = {}
+  ): Promise<WAMessage | undefined> {
     if (!this.sock) throw new Error('WhatsApp is not connected.');
-    return this.sock.sendMessage(jid, content);
+    return this.sock.sendMessage(jid, content, options.quoted ? { quoted: options.quoted } : {});
   }
 
   async sendText(jid: string, text: string, options: { quoted?: WAMessage; mentions?: string[] } = {}) {

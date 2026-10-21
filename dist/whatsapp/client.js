@@ -653,10 +653,10 @@ export class WhatsAppClient {
         this.conn.patch({ status: 'logged_out', selfJid: null, connectedAt: null });
         await botLog('warn', 'whatsapp', 'WhatsApp session logged out');
     }
-    async sendMessage(jid, content) {
+    async sendMessage(jid, content, options = {}) {
         if (!this.sock)
             throw new Error('WhatsApp is not connected.');
-        return this.sock.sendMessage(jid, content);
+        return this.sock.sendMessage(jid, content, options.quoted ? { quoted: options.quoted } : {});
     }
     async sendText(jid, text, options = {}) {
         if (!this.sock)
