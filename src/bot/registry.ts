@@ -23,7 +23,7 @@ export function menuCommands(): Command[] {
   return allCommands().filter((c) => c.inMenu);
 }
 
-export const CATEGORY_ORDER: CommandCategory[] = ['general', 'ai', 'media', 'group', 'tools', 'utility', 'owner'];
+export const CATEGORY_ORDER: CommandCategory[] = ['topup', 'general', 'ai', 'media', 'group', 'tools', 'utility', 'owner'];
 
 export function byCategory(category: CommandCategory): Command[] {
   return allCommands().filter((c) => c.category === category && c.inMenu);

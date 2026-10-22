@@ -29,6 +29,10 @@ const rawSchema = z.object({
     // Shared secret the storefront uses to push order alerts through /api/notify.
     // Empty means the route stays closed.
     NOTIFY_API_KEY: z.string().optional().default(''),
+    // The Free Fire top-up site this bot takes orders for. The owner's own
+    // instance is the shop counter, so the URL and key only ever apply there.
+    TOPUP_API_URL: z.string().optional().default(''),
+    TOPUP_BOT_KEY: z.string().optional().default(''),
     COOKIE_SECRET: z.string().optional().default(''),
     AI_PROVIDER: z.enum(['gemini', 'openai', 'none']).default('none'),
     AI_API_KEY: z.string().optional().default(''),

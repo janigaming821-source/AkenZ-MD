@@ -12,6 +12,7 @@ import { box, formatDateTime, formatUptime, section } from './format.js';
 const startedAt = Date.now();
 export const botStartedAt = () => startedAt;
 const SECTION_ICONS = {
+    topup: '🛒',
     general: '🧭',
     ai: '🤖',
     media: '🎬',
@@ -36,14 +37,18 @@ const menu = {
             }),
         ];
         // Owner commands stay off the menu — they still work for the owner.
-        const show = [
-            ['general', true],
-            ['ai', ctx.settings.aiEnabled],
-            ['media', ctx.settings.mediaEnabled],
-            ['group', ctx.settings.groupToolsEnabled && ctx.isGroup],
-            ['tools', true],
-            ['utility', true],
-        ];
+        // On the top-up counter the shop is the whole product, so nothing else
+        // appears; a customer who types .menu gets the way to order.
+        const show = ctx.isTopup
+            ? [['topup', true]]
+            : [
+                ['general', true],
+                ['ai', ctx.settings.aiEnabled],
+                ['media', ctx.settings.mediaEnabled],
+                ['group', ctx.settings.groupToolsEnabled && ctx.isGroup],
+                ['tools', true],
+                ['utility', true],
+            ];
         for (const [category, visible] of show) {
             if (!visible)
                 continue;
@@ -55,7 +60,9 @@ const menu = {
             for (const command of commands)
                 lines.push(`┃  .${command.name}`);
         }
-        lines.push('', ctx.t('menu.hint', { prefix: ctx.prefix }));
+        lines.push('', ctx.isTopup
+            ? ctx.t('topup.pick', { prices: `${ctx.prefix}prices`, buy: `${ctx.prefix}buy` })
+            : ctx.t('menu.hint', { prefix: ctx.prefix }));
         const text = box(ctx.t('menu.title', { name: ctx.settings.name }), lines);
         const image = await menuImage();
         if (image) {
@@ -90,7 +97,8 @@ const help = {
                 .join('\n'));
             return;
         }
-        const groups = CATEGORY_ORDER.map((category) => {
+        const wantedCategories = ctx.isTopup ? ['topup'] : CATEGORY_ORDER;
+        const groups = wantedCategories.map((category) => {
             const commands = byCategory(category).filter((c) => !c.ownerOnly || ctx.isOwner);
             if (!commands.length)
                 return '';

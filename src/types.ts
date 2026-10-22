@@ -29,7 +29,7 @@ export type {
 
 export type Language = 'en' | 'si';
 
-export type CommandCategory = 'general' | 'ai' | 'media' | 'group' | 'tools' | 'utility' | 'owner';
+export type CommandCategory = 'topup' | 'general' | 'ai' | 'media' | 'group' | 'tools' | 'utility' | 'owner';
 
 export interface ReplyOptions {
   quoted?: boolean;
@@ -46,6 +46,10 @@ export interface CommandContext {
   prefix: string;
   lang: Language;
   settings: BotConfig;
+  /** The owner's own number is the top-up counter, so its menu is only top-up. */
+  isTopup: boolean;
+  /** Wording the seller edited in the top-up console, keyed by locale key. */
+  topupCopy?: Record<string, string>;
   chatJid: string;
   isGroup: boolean;
   groupJid: string | null;

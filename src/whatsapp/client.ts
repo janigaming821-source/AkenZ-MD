@@ -13,6 +13,7 @@ import { config } from '../config/env.js';
 import { botLog, logError, logInfo, logWarn } from '../db/botLog.js';
 import { EncryptedAuthState } from './auth-store.js';
 import { connectionFor, forgetConnection, type ConnectionStore } from './state.js';
+import { downloadMedia as pullMedia } from './extract.js';
 import { currentInstance, OWNER_INSTANCE, runInInstance } from '../lib/scope.js';
 
 export interface InboundMessage {
@@ -751,6 +752,12 @@ export class WhatsAppClient {
       { text, ...(options.mentions?.length ? { mentions: options.mentions } : {}) },
       options.quoted ? { quoted: options.quoted } : {}
     );
+  }
+
+  /** Bytes of a photo or document in an inbound message — a top-up slip, mostly. */
+  async downloadMedia(message: WAMessage): Promise<Buffer> {
+    if (!this.sock) throw new Error('WhatsApp is not connected.');
+    return pullMedia(this.sock, message);
   }
 
   async groupMetadata(jid: string) {

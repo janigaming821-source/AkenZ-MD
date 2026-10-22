@@ -17,6 +17,13 @@ import { hasAdminRights, isBotAdmin, isOwner } from './permissions.js';
 import { resolveCommand } from './registry.js';
 import { currentInstance, OWNER_INSTANCE, scoped } from '../lib/scope.js';
 import { isExpired } from '../whatsapp/instances.js';
+import { copy as topupCopy, topupReady } from '../lib/topup.js';
+import {
+  TOPUP_COMMAND_NAMES,
+  TOPUP_ORIENT_NAMES,
+  handleTopupChat,
+  relayAnswer,
+} from '../commands/topup.js';
 
 const seenGroups = new Set<string>();
 const rateWindows = new Map<string, number>();
@@ -50,6 +57,9 @@ async function resolveLanguage(
 export async function handleInbound(inbound: InboundMessage): Promise<void> {
   const { message, isGroup, jid: chatJid, pushName } = inbound;
   const buyer = currentInstance() !== OWNER_INSTANCE;
+  // The seller's own number is the top-up counter: it answers orders, prices
+  // and questions and nothing else. A buyer's bot keeps its full command set.
+  const topupLine = !buyer && topupReady();
   // A buyer's bot runs on the buyer's own number, so their phone is the only
   // way they can command it. Baileys echoes the bot's own sends with 3EB0 ids.
   const selfCommand = buyer && inbound.fromMe && !message.key.id?.startsWith('3EB0');
@@ -61,8 +71,9 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
     ? whatsapp.selfJid ?? chatJid
     : isGroup ? inbound.participant ?? chatJid : chatJid;
   const text = getText(message);
-
-  if (!text) return;
+  // A caption-less picture is nothing to any bot — except the counter, where a
+  // slip photo arrives exactly like that and is the next step of an order.
+  if (!text && !(topupLine && !isGroup)) return;
 
   try {
     await touchUser(senderJid, pushName);
@@ -109,6 +120,8 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
     senderJid,
     pushName,
     isOwner: owner,
+    isTopup: topupLine,
+    topupCopy: topupLine ? topupCopy() : undefined,
     isAdmin: async () => (isGroup ? hasAdminRights(sock, chatJid, senderJid) : owner),
     isBotAdmin: async () => (isGroup ? isBotAdmin(sock, chatJid, whatsapp.selfJid) : false),
     message,
@@ -136,6 +149,12 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
 
   if (!looksLikeCommand) {
     recordActivity(chatJid, isGroup).catch(() => {});
+    if (topupLine && !isGroup) {
+      // The seller replying to a forwarded question wins over everything else.
+      if (await relayAnswer(message).catch(() => false)) return;
+      const answered = await handleTopupChat(buildContext('chat', [], text)).catch(() => false);
+      if (answered) return;
+    }
     if (settings.autoReplyEnabled) {
       const hit = await matchAutoReply(text);
       if (hit) await replyText(hit.response);
@@ -151,6 +170,13 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
   const command = resolveCommand(name);
   // Counting is a nice-to-have; a failed insert must never eat the reply.
   recordActivity(chatJid, isGroup, name).catch(() => {});
+
+  // On the counter, a customer gets the shop and nothing else. Custom commands
+  // and the rest of the AkenZ MD feature set stay for the buyer-owned bots.
+  if (topupLine && !owner && !TOPUP_COMMAND_NAMES.has(name) && !TOPUP_ORIENT_NAMES.has(name)) {
+    await replyText(t(lang, 'topup.notForThisBot', { prices: `${prefix}prices`, buy: `${prefix}buy` }));
+    return;
+  }
 
   if (!command) {
     const custom = await getCustomCommand(name);

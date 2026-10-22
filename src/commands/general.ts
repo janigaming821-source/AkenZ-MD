@@ -15,6 +15,7 @@ const startedAt = Date.now();
 export const botStartedAt = () => startedAt;
 
 const SECTION_ICONS: Partial<Record<CommandCategory, string>> = {
+  topup: '🛒',
   general: '🧭',
   ai: '🤖',
   media: '🎬',
@@ -41,14 +42,18 @@ const menu: Command = {
     ];
 
     // Owner commands stay off the menu — they still work for the owner.
-    const show: Array<[CommandCategory, boolean]> = [
-      ['general', true],
-      ['ai', ctx.settings.aiEnabled],
-      ['media', ctx.settings.mediaEnabled],
-      ['group', ctx.settings.groupToolsEnabled && ctx.isGroup],
-      ['tools', true],
-      ['utility', true],
-    ];
+    // On the top-up counter the shop is the whole product, so nothing else
+    // appears; a customer who types .menu gets the way to order.
+    const show: Array<[CommandCategory, boolean]> = ctx.isTopup
+      ? [['topup', true]]
+      : [
+          ['general', true],
+          ['ai', ctx.settings.aiEnabled],
+          ['media', ctx.settings.mediaEnabled],
+          ['group', ctx.settings.groupToolsEnabled && ctx.isGroup],
+          ['tools', true],
+          ['utility', true],
+        ];
 
     for (const [category, visible] of show) {
       if (!visible) continue;
@@ -59,7 +64,12 @@ const menu: Command = {
       for (const command of commands) lines.push(`┃  .${command.name}`);
     }
 
-    lines.push('', ctx.t('menu.hint', { prefix: ctx.prefix }));
+    lines.push(
+      '',
+      ctx.isTopup
+        ? ctx.t('topup.pick', { prices: `${ctx.prefix}prices`, buy: `${ctx.prefix}buy` })
+        : ctx.t('menu.hint', { prefix: ctx.prefix })
+    );
     const text = box(ctx.t('menu.title', { name: ctx.settings.name }), lines);
 
     const image = await menuImage();
@@ -99,7 +109,8 @@ const help: Command = {
       return;
     }
 
-    const groups = CATEGORY_ORDER.map((category) => {
+    const wantedCategories = ctx.isTopup ? (['topup'] as CommandCategory[]) : CATEGORY_ORDER;
+    const groups = wantedCategories.map((category) => {
       const commands = byCategory(category).filter((c) => !c.ownerOnly || ctx.isOwner);
       if (!commands.length) return '';
       return [

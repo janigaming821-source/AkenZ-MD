@@ -4,6 +4,7 @@ import { config } from '../config/env.js';
 import { botLog, logError, logWarn } from '../db/botLog.js';
 import { EncryptedAuthState } from './auth-store.js';
 import { connectionFor, forgetConnection } from './state.js';
+import { downloadMedia as pullMedia } from './extract.js';
 import { currentInstance, OWNER_INSTANCE, runInInstance } from '../lib/scope.js';
 const PAIRING_CODE_TTL_MS = 55_000;
 const PAIRING_REQUEST_TIMEOUT_MS = 30_000;
@@ -662,6 +663,12 @@ export class WhatsAppClient {
         if (!this.sock)
             throw new Error('WhatsApp is not connected.');
         return this.sock.sendMessage(jid, { text, ...(options.mentions?.length ? { mentions: options.mentions } : {}) }, options.quoted ? { quoted: options.quoted } : {});
+    }
+    /** Bytes of a photo or document in an inbound message — a top-up slip, mostly. */
+    async downloadMedia(message) {
+        if (!this.sock)
+            throw new Error('WhatsApp is not connected.');
+        return pullMedia(this.sock, message);
     }
     async groupMetadata(jid) {
         if (!this.sock)

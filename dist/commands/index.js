@@ -7,7 +7,9 @@ import { groupCommands } from './group.js';
 import { ownerCommands } from './owner.js';
 import { scheduleCommands } from './schedule.js';
 import { utilityCommands } from './utility.js';
+import { topupCommands } from './topup.js';
 const all = [
+    ...topupCommands,
     ...generalCommands,
     ...toolCommands,
     ...mediaCommands,

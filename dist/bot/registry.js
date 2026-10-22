@@ -17,7 +17,7 @@ export function allCommands() {
 export function menuCommands() {
     return allCommands().filter((c) => c.inMenu);
 }
-export const CATEGORY_ORDER = ['general', 'ai', 'media', 'group', 'tools', 'utility', 'owner'];
+export const CATEGORY_ORDER = ['topup', 'general', 'ai', 'media', 'group', 'tools', 'utility', 'owner'];
 export function byCategory(category) {
     return allCommands().filter((c) => c.category === category && c.inMenu);
 }
