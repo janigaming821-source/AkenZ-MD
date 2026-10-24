@@ -1,5 +1,6 @@
 import { t as translate } from '../i18n/index.js';
 import * as api from '../lib/topup.js';
+import { getUser } from '../db/users.js';
 import { compressImage } from '../media/images.js';
 import { getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
 import { whatsapp } from '../whatsapp/client.js';
@@ -315,7 +316,7 @@ const RELAY_TTL = 12 * 3600_000;
  * replies to that forwarded copy comes straight back to the customer — one
  * thread, no app switching, nothing lost in the middle.
  */
-async function forwardToSeller(ctx, text) {
+async function forwardToSeller(ctx, text, quiet = false) {
     // The seller's own chats must never bounce his words back at him.
     if (ctx.isOwner)
         return false;
@@ -336,7 +337,10 @@ async function forwardToSeller(ctx, text) {
             if (Date.now() - hit.at > RELAY_TTL)
                 relays.delete(old);
     }
-    await ctx.reply(say(ctx, 'topup.relaySent'));
+    // The intro has already been given, so from here on the pass-on happens
+    // without telling the customer about it. The seller answers into this chat.
+    if (!quiet)
+        await ctx.reply(say(ctx, 'topup.relaySent'));
     return true;
 }
 function quotedId(message) {
@@ -365,6 +369,27 @@ export async function relayAnswer(message) {
     return true;
 }
 // ------------------------------------------------------------ chat follow-up
+// ------------------------------------------------------------ first contact
+/**
+ * The counter speaks once. Whoever writes to this number for the very first
+ * time gets the shop intro, because "hi" is how a buyer arrives and an empty
+ * chat looks like a dead one. Anything they send afterwards is either a command,
+ * the next step of an order, or a question for the seller — never a second
+ * chance to hear the same speech.
+ *
+ * `messageCount` is read after the handler has already recorded this message,
+ * so 1 means nothing from this number was ever on file before.
+ */
+async function greetOnce(ctx) {
+    if (ctx.isOwner || !ctx.text.trim())
+        return false;
+    const seen = await getUser(ctx.senderJid).catch(() => null);
+    if (seen && seen.messageCount > 1)
+        return false;
+    await ctx.reply(say(ctx, 'topup.greet', { prices: `${ctx.prefix}prices`, buy: `${ctx.prefix}buy` }));
+    return true;
+}
+// ------------------------------------------------------------ chat follow-up
 /**
  * Anything that is not a command, on the shop line. A chat holding a draft
  * answers as the next step of that order — own number, player ID, slip photo,
@@ -379,8 +404,14 @@ export async function handleTopupChat(ctx) {
     // one. Otherwise the chat is answered exactly like any other message.
     if (!draft && !ctx.text.trim())
         return false;
-    if (!draft)
-        return forwardToSeller(ctx, ctx.text);
+    if (!draft) {
+        if (await greetOnce(ctx))
+            return true;
+        // Past the intro the bot keeps out of the way: the question still reaches
+        // the seller, who answers into this chat, but the customer is not told a
+        // forwarding happened.
+        return forwardToSeller(ctx, ctx.text, true);
+    }
     const media = getMediaType(ctx.message);
     const source = mediaSourceMessage(ctx.message);
     if (media === 'image' && source && draft.step === 'slip') {
@@ -420,11 +451,40 @@ export async function handleTopupChat(ctx) {
             return stuckOn(ctx, draft, 'topup.badPlayerId');
         }
         draft.ffId = digits;
-        draft.step = 'slip';
         draft.at = Date.now();
         const cfg = await catalog();
+        const total = draft.unit * draft.qty + draft.fee;
+        // Money that is already in the account retires the whole counter leg — no
+        // shop visit, no slip photo, no reference to type. It is only a shortcut
+        // and never a licence: the site recomputes the total from the catalogue and
+        // refuses to spend what is not there, so a stale number here just falls
+        // back to paying at the counter.
+        const held = await api.balanceOf(draft.phone).catch(() => 0);
+        if (total > 0 && held >= total) {
+            try {
+                const placed = await api.placeOrder(draft.phone, {
+                    ffId: draft.ffId,
+                    items: [{ sku: draft.sku, qty: draft.qty }],
+                    method: 'wallet',
+                });
+                clearDraft(ctx.chatJid);
+                await ctx.reply(say(ctx, 'topup.paidWallet', {
+                    ref: String(placed.ref || ''),
+                    pack: draft.label,
+                    total: money(Number(placed.amount_lkr) || total),
+                    left: money(Number(placed.balance_lkr) || held - total),
+                }));
+                return true;
+            }
+            catch (error) {
+                const code = error instanceof api.TopupError ? error.code : 'offline';
+                if (code !== 'wallet_short')
+                    return stuckOn(ctx, draft, orderError(code));
+            }
+        }
+        draft.step = 'slip';
         await ctx.reply(say(ctx, 'topup.needSlip', {
-            total: money(draft.unit * draft.qty + draft.fee),
+            total: money(total),
             name: cfg?.ezcash_name || '',
             number: cfg?.ezcash_number || '',
             pack: draft.label,

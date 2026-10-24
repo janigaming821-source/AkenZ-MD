@@ -131,9 +131,15 @@ export async function session(phone: string): Promise<string> {
 export interface OrderDraft {
   ffId: string;
   items: { sku: string; qty: number }[];
-  txnId: string;
-  slipPath: string;
+  txnId?: string;
+  slipPath?: string;
   note?: string;
+  /**
+   * `wallet` pays from the balance the customer already loaded, so the counter
+   * visit, the slip and the reference all disappear. `ezcash` is the counter
+   * path and still needs both.
+   */
+  method?: 'ezcash' | 'wallet';
 }
 
 export async function uploadSlip(phone: string, buffer: Buffer, mime: string): Promise<string> {
@@ -162,18 +168,30 @@ export async function uploadSlip(phone: string, buffer: Buffer, mime: string): P
 
 export async function placeOrder(phone: string, draft: OrderDraft): Promise<Record<string, unknown>> {
   const token = await session(phone);
+  const method = draft.method || 'ezcash';
   return call(`/account/orders`, {
     method: 'POST',
     body: JSON.stringify({
       ff_id: draft.ffId,
       items: draft.items,
-      method: 'ezcash',
-      txn_id: draft.txnId,
-      slip_path: draft.slipPath,
-      slip_name: 'slip.jpg',
+      method,
+      txn_id: draft.txnId || '',
+      slip_path: draft.slipPath || '',
+      slip_name: draft.slipPath ? 'slip.jpg' : '',
       note: draft.note || 'via WhatsApp',
     }),
   }, token);
+}
+
+/**
+ * What the counter is worth for this customer. The site recomputes every total,
+ * so this number is only ever used to choose which way to pay — never to price
+ * anything.
+ */
+export async function balanceOf(phone: string): Promise<number> {
+  const token = await session(phone);
+  const { balance_lkr } = await call<{ balance_lkr: number }>('/account/wallet', {}, token);
+  return Math.max(0, Math.floor(Number(balance_lkr) || 0));
 }
 
 export interface SiteOrder {

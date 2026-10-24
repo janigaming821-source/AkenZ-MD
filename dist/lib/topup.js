@@ -118,18 +118,29 @@ export async function uploadSlip(phone, buffer, mime) {
 }
 export async function placeOrder(phone, draft) {
     const token = await session(phone);
+    const method = draft.method || 'ezcash';
     return call(`/account/orders`, {
         method: 'POST',
         body: JSON.stringify({
             ff_id: draft.ffId,
             items: draft.items,
-            method: 'ezcash',
-            txn_id: draft.txnId,
-            slip_path: draft.slipPath,
-            slip_name: 'slip.jpg',
+            method,
+            txn_id: draft.txnId || '',
+            slip_path: draft.slipPath || '',
+            slip_name: draft.slipPath ? 'slip.jpg' : '',
             note: draft.note || 'via WhatsApp',
         }),
     }, token);
+}
+/**
+ * What the counter is worth for this customer. The site recomputes every total,
+ * so this number is only ever used to choose which way to pay — never to price
+ * anything.
+ */
+export async function balanceOf(phone) {
+    const token = await session(phone);
+    const { balance_lkr } = await call('/account/wallet', {}, token);
+    return Math.max(0, Math.floor(Number(balance_lkr) || 0));
 }
 export async function ordersOf(phone) {
     const token = await session(phone);
