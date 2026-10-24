@@ -1,0 +1,28 @@
+# The bot is a long-lived process, not a website: it holds the WhatsApp socket
+# and now collects its order alerts by asking the storefront for them. So it
+# needs no inbound traffic at all — the port below is only the dashboard.
+#
+# Autoscale scales to zero between requests, which drops the socket and forces a
+# re-pair. Publish this as a Reserved VM (or leave it as a dev app that stays
+# open) so the process is never paused.
+
+run = ["sh", "-c", "npm run bootstrap && npm start"]
+entrypoint = "src/index.ts"
+modules = ["nodejs-22"]
+hidden = [".config"]
+
+[nix]
+channel = "stable-24_11"
+
+[deployment]
+build = ["npm", "run", "bootstrap"]
+run = ["npm", "run", "start"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+# No `[run.env]` block here: it collides with the `run` key above and TOML
+# refuses to parse the file. Put DASHBOARD_HOST=0.0.0.0 in Variables, which the
+# dev run and the deployment both read.

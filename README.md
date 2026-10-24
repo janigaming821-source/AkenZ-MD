@@ -465,6 +465,44 @@ merges are slower than on the local PC.
 
 ---
 
+## Moving it to Replit
+
+`.replit` and `replit.nix` at the root are the whole environment: Node 22, the
+packages the media tools shell out to, `npm run bootstrap` (install → prisma
+generate → build) as the build, `npm start` as the run. Only your account can
+create the Repl, so those steps stay manual — and their order is not flexible.
+
+1. **Stop bonto before starting anything else.** Pause the app and poll
+   `https://akenz-md.bonto.run/health` until it stops answering. Two processes
+   on one Baileys session gets the session logged out; the symptom is a bot
+   that has to be paired again.
+2. Create a **private** Repl from the GitHub repo, not from a zip — the repo is
+   what keeps `dist/` and the keep-alive workflow in step with the source.
+3. Put the environment in Replit's Secrets tab. `SESSION_ENCRYPTION_KEY` must
+   be **the exact value bonto holds**: the session in Turso is encrypted with
+   it, and any other value reads as an unpairable bot. Then
+   `DATABASE_URL` (`libsql://…`), `TURSO_AUTH_TOKEN`, `TOPUP_API_URL`,
+   `TOPUP_BOT_KEY`, `OWNER_NUMBER`, `OWNER_JID`, `BOT_PREFIX`, `TIMEZONE`,
+   `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`, `NOTIFY_API_KEY`, and
+   `DASHBOARD_HOST=0.0.0.0` if you want the dashboard on the mapped port.
+4. Run it, then check `/health` answers `{"whatsapp":"connected"}`. If it says
+   `logged_out` while step 1 was respected, the key is the suspect.
+5. Repoint the GitHub Actions pinger at the new `/health`, or delete the
+   workflow — it exists only to keep bonto from sleeping.
+
+Nothing in the storefront needs a bot URL any more. Order alerts are pulled
+(`src/scheduler/index.ts` collects them on the owner's tick over the same
+authenticated channel the top-up commands use), so a host with no reachable
+inbound port delivers them exactly as well as one that has a port.
+
+A Replit **dev app** stops when the browser tab closes and **Autoscale** scales
+to zero between requests — both drop the WhatsApp socket, and the pairing rate
+limit punishes reconnect churn. Only a Reserved VM is always-on, and it is
+paid. bonto's free tier plus the pinger is still the only cost-free way to keep
+this socket open, so moving here buys reliability, not a free lunch.
+
+---
+
 ## Selling it: the site in `site/`
 
 `site/` is the shop for the bot: plans at **Rs 120 / month, Rs 800 / year, Rs 1000
