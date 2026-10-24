@@ -32,6 +32,8 @@ RUN npm ci --omit=dev
 # the production install has no prisma CLI to regenerate it.
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
+# The dashboard serves these files directly from /app/src/web/public at runtime.
+COPY --from=builder /app/src/web/public ./src/web/public
 # Read at runtime: the menu banner and the en/si translations.
 COPY assets ./assets
 COPY locales ./locales
