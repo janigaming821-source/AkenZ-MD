@@ -194,4 +194,46 @@ export async function ordersOf(phone: string): Promise<SiteOrder[]> {
   return orders || [];
 }
 
+// ------------------------------------------------------------ order alerts
+//
+// The site queues every WhatsApp alert in its own table and this bot hands
+// itself the next few. Nothing is ever reachable at the bot, so no firewall,
+// sleeping-host page or missing inbound port can break delivery — and if the
+// bot is offline, the queue simply waits and nothing is lost.
+
+export interface SiteAlert {
+  id: number;
+  ref: string;
+  kind: string;
+  to: string;
+  text: string;
+  media_url: string;
+  quote_id: string;
+}
+
+export async function claimAlerts(limit = 3): Promise<SiteAlert[]> {
+  const { alerts } = await call<{ alerts: SiteAlert[] }>('/bot/alerts/claim', {
+    method: 'POST',
+    body: JSON.stringify({ limit }),
+  });
+  return alerts || [];
+}
+
+/**
+ * Tells the site what happened to a claimed alert. A send that the bot never
+ * reports — a crash, a kill — is not lost: the site's lease expires and the
+ * alert comes back on the next poll.
+ */
+export async function reportAlert(
+  id: number,
+  delivered: boolean,
+  messageId = '',
+  error = ''
+): Promise<void> {
+  await call('/bot/alerts/result', {
+    method: 'POST',
+    body: JSON.stringify({ id, ok: delivered, message_id: messageId, error }),
+  });
+}
+
 export { TopupError };

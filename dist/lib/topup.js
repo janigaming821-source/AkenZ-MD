@@ -136,5 +136,23 @@ export async function ordersOf(phone) {
     const { orders } = await call('/account/orders', {}, token);
     return orders || [];
 }
+export async function claimAlerts(limit = 3) {
+    const { alerts } = await call('/bot/alerts/claim', {
+        method: 'POST',
+        body: JSON.stringify({ limit }),
+    });
+    return alerts || [];
+}
+/**
+ * Tells the site what happened to a claimed alert. A send that the bot never
+ * reports — a crash, a kill — is not lost: the site's lease expires and the
+ * alert comes back on the next poll.
+ */
+export async function reportAlert(id, delivered, messageId = '', error = '') {
+    await call('/bot/alerts/result', {
+        method: 'POST',
+        body: JSON.stringify({ id, ok: delivered, message_id: messageId, error }),
+    });
+}
 export { TopupError };
 //# sourceMappingURL=topup.js.map
