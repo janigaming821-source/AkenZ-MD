@@ -5,6 +5,7 @@ import { getUser } from '../db/users.js';
 import { compressImage } from '../media/images.js';
 import { getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
 import { whatsapp } from '../whatsapp/client.js';
+import { currentInstance, OWNER_INSTANCE } from '../lib/scope.js';
 import type { Command, CommandContext } from '../types.js';
 import type { WAMessage } from 'baileys';
 
@@ -408,8 +409,16 @@ function shop(command: Command): Command {
     ...command,
     execute: async (ctx) => {
       if (!ctx.isTopup) {
+        // A rented bot sends its customer to the shop that owns the order form.
+        // The seller's own number answering the same way only ever means the
+        // shop key is missing from its environment, and "go elsewhere" there
+        // would turn a customer away from the very counter that serves them.
+        const ours = currentInstance() === OWNER_INSTANCE;
         await ctx.reply(
-          ctx.t('topup.notForThisBot', { prices: `${ctx.prefix}prices`, buy: `${ctx.prefix}buy` })
+          ctx.t(ours ? 'topup.offline' : 'topup.notForThisBot', {
+            prices: `${ctx.prefix}prices`,
+            buy: `${ctx.prefix}buy`,
+          })
         );
         return;
       }

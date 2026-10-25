@@ -15,12 +15,14 @@ import { whatsapp, type InboundMessage } from '../whatsapp/client.js';
 import { getText } from '../whatsapp/extract.js';
 import { hasAdminRights, isBotAdmin, isOwner } from './permissions.js';
 import { resolveCommand } from './registry.js';
+import { intentOf } from './intents.js';
 import { currentInstance, OWNER_INSTANCE, scoped } from '../lib/scope.js';
 import { isExpired } from '../whatsapp/instances.js';
 import { copy as topupCopy, topupReady } from '../lib/topup.js';
 import {
   TOPUP_COMMAND_NAMES,
   TOPUP_ORIENT_NAMES,
+  draftOf,
   handleTopupChat,
   relayAnswer,
 } from '../commands/topup.js';
@@ -146,8 +148,15 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
   });
 
   const looksLikeCommand = text.startsWith(prefix) && text.length > prefix.length;
+  // A customer at the counter types the word, not the command. An open order
+  // comes first: while a draft is alive every reply is its next step, and the
+  // seller's own messages stay theirs because a relay must never be parsed.
+  const spoken =
+    !looksLikeCommand && !owner && topupLine && !isGroup && !draftOf(chatJid)
+      ? intentOf(text)
+      : undefined;
 
-  if (!looksLikeCommand) {
+  if (!looksLikeCommand && !spoken) {
     recordActivity(chatJid, isGroup).catch(() => {});
     if (topupLine && !isGroup) {
       // The seller replying to a forwarded question wins over everything else.
@@ -162,12 +171,13 @@ export async function handleInbound(inbound: InboundMessage): Promise<void> {
     return;
   }
 
-  const [rawName = '', ...args] = text.slice(prefix.length).trim().split(/\s+/);
-  const name = rawName.toLowerCase();
+  const [rawName = '', ...rest] = text.slice(prefix.length).trim().split(/\s+/);
+  const name = spoken?.command.name ?? rawName.toLowerCase();
+  const args = spoken?.args ?? rest;
   const fullArgs = args.join(' ');
   if (!name) return;
 
-  const command = resolveCommand(name);
+  const command = spoken?.command ?? resolveCommand(name);
   // Counting is a nice-to-have; a failed insert must never eat the reply.
   recordActivity(chatJid, isGroup, name).catch(() => {});
 

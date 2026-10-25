@@ -17,6 +17,7 @@ import { connection, statusLabel } from '../whatsapp/state.js';
 import { whatsapp } from '../whatsapp/client.js';
 import { listInstances, provisionInstance, removeInstance, updateInstance } from '../whatsapp/instances.js';
 import { allCommands } from '../bot/registry.js';
+import { deliveryReady, topupReady } from '../lib/topup.js';
 import { botStartedAt } from '../commands/general.js';
 import { aiIsConfigured } from '../tools/api.js';
 import { validatePublicUrl } from '../tools/url.js';
@@ -571,6 +572,9 @@ app.get('/api/integrations', async (_req, res) => {
     weather: { provider: config.weather.provider, keyless: config.weather.provider === 'open-meteo' },
     translate: { provider: config.translate.provider, keyless: config.translate.provider === 'mymemory' },
     media: { enabled: config.media.enabled },
+    // A counter that answers "this number does not take orders" while sitting on
+    // the seller's own phone means these two are off on the host.
+    topup: { shop: topupReady(), delivery: deliveryReady() },
     ownerNumberSet: Boolean(config.bot.ownerNumber),
     ownerJidSet: Boolean(config.bot.ownerJid),
   });
