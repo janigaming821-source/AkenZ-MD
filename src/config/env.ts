@@ -35,6 +35,9 @@ const rawSchema = z.object({
   // instance is the shop counter, so the URL and key only ever apply there.
   TOPUP_API_URL: z.string().optional().default(''),
   TOPUP_BOT_KEY: z.string().optional().default(''),
+  // Narrower secret that only lets this instance close an order the seller
+  // topped up by hand. Never given to a buyer's rented bot.
+  TOPUP_DELIVERY_KEY: z.string().optional().default(''),
   COOKIE_SECRET: z.string().optional().default(''),
   AI_PROVIDER: z.enum(['gemini', 'openai', 'none']).default('none'),
   AI_API_KEY: z.string().optional().default(''),

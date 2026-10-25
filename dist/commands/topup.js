@@ -1,5 +1,6 @@
 import { t as translate } from '../i18n/index.js';
 import * as api from '../lib/topup.js';
+import { renderReceipt } from '../lib/receipt.js';
 import { getUser } from '../db/users.js';
 import { compressImage } from '../media/images.js';
 import { getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
@@ -286,6 +287,84 @@ const support = {
     },
 };
 /**
+ * The seller's own keystroke. He has just put the diamonds in the game by hand;
+ * `.done` settles the order on the site and walks the buyer's receipt out to
+ * them, so the chat that took the order is also the chat that closes it.
+ *
+ * It answers to a separate secret from the rest of the shop: a rented buyer bot
+ * holds the shop key and must never be able to mark this store's orders paid.
+ */
+const done = {
+    name: 'done',
+    aliases: ['delivered'],
+    category: 'topup',
+    inMenu: false,
+    ownerOnly: true,
+    description: 'Close an order and send the buyer their receipt: done <ref>',
+    usage: 'done <ref>',
+    async execute(ctx) {
+        if (!api.deliveryReady())
+            return ctx.reply(say(ctx, 'topup.doneOff'));
+        const ref = (ctx.args[0] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const quoted = quotedId(ctx.message);
+        if (!ref && !quoted)
+            return ctx.reply(say(ctx, 'topup.doneNeedRef'));
+        let order;
+        try {
+            order = await api.orderDone(ref, quoted);
+        }
+        catch (error) {
+            const code = error instanceof api.TopupError ? error.code : 'offline';
+            return ctx.reply(say(ctx, code === 'not_found' ? 'topup.doneNotFound' : 'topup.doneFailed', { code }));
+        }
+        const items = (order.items || []).map((i) => ({ name: i.name_en, qty: i.qty, price: i.price_lkr }));
+        const packLine = items.length ? items.map((i) => `${i.name}${i.qty > 1 ? ` x${i.qty}` : ''}`).join(' + ') : 'top-up';
+        const receiptVars = {
+            pack: packLine,
+            id: order.ff_id,
+            total: money(Number(order.amount_lkr) || 0),
+            ref: order.ref,
+            track: `${ctx.prefix}track`,
+        };
+        // The buyer's own language is unknown to this chat, and one thread is read
+        // by people who type either, so the receipt says it twice rather than
+        // guessing wrong.
+        const caption = [
+            translate('si', 'topup.receipt', receiptVars),
+            translate('en', 'topup.receipt', receiptVars),
+        ].join('\n\n');
+        let card = null;
+        try {
+            card = await renderReceipt({
+                storeName: (await catalog())?.store_name || ctx.settings.name,
+                ref: order.ref,
+                ffId: order.ff_id,
+                nickname: order.ff_nickname || '',
+                level: order.ff_level ?? null,
+                region: order.ff_region || '',
+                items,
+                total: Number(order.amount_lkr) || 0,
+                method: order.method === 'wallet' ? 'Wallet' : 'EZ Cash',
+                at: order.delivered_at ? new Date(order.delivered_at) : new Date(),
+            });
+        }
+        catch {
+            // A card that will not draw is never a reason to leave the buyer without
+            // their receipt — the words go out on their own.
+        }
+        if (!order.wa_phone) {
+            return ctx.reply(say(ctx, 'topup.doneNoBuyer', { ref: order.ref }));
+        }
+        const to = `${order.wa_phone}@s.whatsapp.net`;
+        const sent = card
+            ? await whatsapp.sendMessage(to, { image: card, caption }).catch(() => null)
+            : await whatsapp.sendText(to, caption).catch(() => null);
+        if (!sent)
+            return ctx.reply(say(ctx, 'topup.doneSendFailed', { ref: order.ref, phone: order.wa_phone }));
+        await ctx.reply(say(ctx, 'topup.doneSent', { ref: order.ref, phone: order.wa_phone }));
+    },
+};
+/**
  * The counter only opens on the seller's own number. A buyer's bot has the
  * same command names installed but must send its customers elsewhere, because
  * these orders would land on the seller's shop.
@@ -302,7 +381,7 @@ function shop(command) {
         },
     };
 }
-export const topupCommands = [prices, buy, track, ezcash, nevermind, support].map(shop);
+export const topupCommands = [prices, buy, track, ezcash, nevermind, support, done].map(shop);
 /** Commands the shop line answers with. Everything else belongs to a buyer's bot. */
 export const TOPUP_COMMAND_NAMES = new Set(topupCommands.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
 /** Orientation stays open on the shop line so nobody feels stuck. */
@@ -454,6 +533,14 @@ export async function handleTopupChat(ctx) {
         draft.at = Date.now();
         const cfg = await catalog();
         const total = draft.unit * draft.qty + draft.fee;
+        // Say whose account they just typed, before asking for money. An empty
+        // answer is the provider's daily meter rather than a wrong ID, so this
+        // warns and lets the order through — the seller still reads the nickname
+        // off the order before loading it.
+        const who = await api.checkFfId(draft.phone, digits).catch(() => null);
+        const idLine = who?.verified
+            ? say(ctx, 'topup.playerFound', { nick: who.nickname, lvl: String(who.level || 0) })
+            : say(ctx, 'topup.playerUnknown');
         // Money that is already in the account retires the whole counter leg — no
         // shop visit, no slip photo, no reference to type. It is only a shortcut
         // and never a licence: the site recomputes the total from the catalogue and
@@ -483,12 +570,12 @@ export async function handleTopupChat(ctx) {
             }
         }
         draft.step = 'slip';
-        await ctx.reply(say(ctx, 'topup.needSlip', {
+        await ctx.reply(`${idLine}\n\n${say(ctx, 'topup.needSlip', {
             total: money(total),
             name: cfg?.ezcash_name || '',
             number: cfg?.ezcash_number || '',
             pack: draft.label,
-        }));
+        })}`);
         return true;
     }
     if (draft.step === 'txn') {

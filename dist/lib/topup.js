@@ -11,6 +11,12 @@ import { config } from '../config/env.js';
  */
 const API = () => String(config.raw.TOPUP_API_URL || '').replace(/\/+$/, '');
 const KEY = () => String(config.raw.TOPUP_BOT_KEY || '');
+// Only ever present on the seller's own instance. A buyer's bot has the shop
+// key so its owner can take orders, and must not be able to settle one.
+const DELIVERY_KEY = () => String(config.raw.TOPUP_DELIVERY_KEY || '');
+export function deliveryReady() {
+    return !!API() && !!DELIVERY_KEY();
+}
 export function topupReady() {
     return !!API() && !!KEY();
 }
@@ -21,7 +27,7 @@ class TopupError extends Error {
         this.code = code;
     }
 }
-async function call(path, init = {}, token) {
+async function call(path, init = {}, token, timeoutMs = 15000) {
     if (!topupReady())
         throw new TopupError('not_configured');
     const headers = {
@@ -34,7 +40,7 @@ async function call(path, init = {}, token) {
     const res = await fetch(`${API()}${path}`, {
         ...init,
         headers,
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(timeoutMs),
     }).catch(() => null);
     if (!res)
         throw new TopupError('offline');
@@ -94,6 +100,21 @@ export async function session(phone) {
         throw new TopupError('no_token');
     sessions.set(phone, { at: Date.now(), token });
     return token;
+}
+/**
+ * Ask the shop who owns that Player ID, before the money moves. It goes through
+ * the same cached lookup the storefront uses, so an ID checked here is not
+ * spent again at checkout. A null answer is not a refusal — the provider has a
+ * small daily meter, and when it runs out the order still has to be placeable.
+ */
+export async function checkFfId(phone, ffId) {
+    const token = await session(phone);
+    const r = await call('/account/ff-save', { method: 'POST', body: JSON.stringify({ ff_id: ffId }) }, token, 
+    // A cold provider lookup costs five seconds here. That is long enough to
+    // hold a chat hostage, so it gets a short leash and the order goes through
+    // on the seller's own reading of the ID instead.
+    7000);
+    return { verified: !!r.verified, nickname: String(r.nickname || ''), level: Number(r.level) || 0 };
 }
 export async function uploadSlip(phone, buffer, mime) {
     const token = await session(phone);
@@ -164,6 +185,33 @@ export async function reportAlert(id, delivered, messageId = '', error = '') {
         method: 'POST',
         body: JSON.stringify({ id, ok: delivered, message_id: messageId, error }),
     });
+}
+/**
+ * The seller said `.done`, so the site settles the order and hands back what the
+ * receipt needs. Either a reference or the id of the alert message he replied to
+ * identifies it — the message id is what makes "reply to the order and type
+ * .done" survive a bot restart, because the site keeps it on the order row.
+ */
+export async function orderDone(ref, messageId = '') {
+    if (!deliveryReady())
+        throw new TopupError('delivery_not_configured');
+    const res = await fetch(`${API()}/bot/order-done`, {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+            'x-noaura-delivery': DELIVERY_KEY(),
+        },
+        body: JSON.stringify({ ref, message_id: messageId }),
+        signal: AbortSignal.timeout(20000),
+    }).catch(() => null);
+    if (!res)
+        throw new TopupError('offline');
+    const body = (await res.json().catch(() => null));
+    if (!body || typeof body !== 'object')
+        throw new TopupError(`http_${res.status}`);
+    if (body.ok === false)
+        throw new TopupError(body.message || 'rejected');
+    return { ...body, wa_phone: String(body.wa_phone || '') };
 }
 export { TopupError };
 //# sourceMappingURL=topup.js.map
