@@ -5,6 +5,7 @@ import { getUser } from '../db/users.js';
 import { compressImage } from '../media/images.js';
 import { getMediaType, mediaSourceMessage } from '../whatsapp/extract.js';
 import { whatsapp } from '../whatsapp/client.js';
+import { currentInstance, OWNER_INSTANCE } from '../lib/scope.js';
 // One unfinished order per private chat, good for twenty minutes. A stale
 // half-order must never hijack whatever the person types next.
 const drafts = new Map();
@@ -374,7 +375,15 @@ function shop(command) {
         ...command,
         execute: async (ctx) => {
             if (!ctx.isTopup) {
-                await ctx.reply(ctx.t('topup.notForThisBot', { prices: `${ctx.prefix}prices`, buy: `${ctx.prefix}buy` }));
+                // A rented bot sends its customer to the shop that owns the order form.
+                // The seller's own number answering the same way only ever means the
+                // shop key is missing from its environment, and "go elsewhere" there
+                // would turn a customer away from the very counter that serves them.
+                const ours = currentInstance() === OWNER_INSTANCE;
+                await ctx.reply(ctx.t(ours ? 'topup.offline' : 'topup.notForThisBot', {
+                    prices: `${ctx.prefix}prices`,
+                    buy: `${ctx.prefix}buy`,
+                }));
                 return;
             }
             await command.execute(ctx);

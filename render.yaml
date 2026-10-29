@@ -50,3 +50,16 @@ services:
         value: '64'
       - key: MEDIA_TIMEOUT_MS
         value: '300000'
+      # The storefront the counter sells from: without these the bot has no
+      # catalogue and cannot mark an order delivered.
+      - key: TOPUP_API_URL
+        sync: false
+      - key: TOPUP_BOT_KEY
+        sync: false
+      - key: TOPUP_DELIVERY_KEY
+        sync: false
+      # Buyer-owned bot instances are provisioned from the shop site.
+      - key: BUYER_API_KEY
+        sync: false
+      - key: PROVISION_API_KEY
+        sync: false

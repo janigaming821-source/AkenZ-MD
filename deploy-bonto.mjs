@@ -29,7 +29,7 @@ const local = JSON.parse(readFileSync('package.json', 'utf8'));
 const deps = { ...local.dependencies };
 deps.prisma = local.devDependencies.prisma;
 delete deps['@whiskeysockets/baileys'];
-deps.baileys = 'latest';
+deps.baileys = local.dependencies.baileys;
 const cloud = {
   name: local.name,
   version: local.version,
@@ -53,15 +53,25 @@ const CONTENT = { 'package.json': JSON.stringify(cloud, null, 2) };
 let failures = 0;
 for (const path of ORDER) {
   const content = CONTENT[path] ?? readFileSync(path, 'utf8');
-  const r = await fetch(API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
-    body: JSON.stringify({ path, content }),
-  });
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}`, Connection: 'close' },
+        body: JSON.stringify({ path, content }),
+        signal: AbortSignal.timeout(30000),
+      });
+      break;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
   const text = await r.text();
   if (!r.ok) failures += 1;
   if (!r.ok || path.includes('web/public') || path === 'package.json' || path.endsWith('prisma')) {
     console.log(`${r.status}  ${path.padEnd(34)} ${text.slice(0, 60).replace(/\s+/g, ' ')}`);
   }
+  if (!r.ok) process.exit(1);
 }
 console.log(`\nuploaded ${ORDER.length} files, ${failures} failed`);
